@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+venv/
+env/
+.env
+Thumbs.db
+desktop.ini
+rollback_log.json
+CLAUDE.md
+.claude*
+test_run.py
