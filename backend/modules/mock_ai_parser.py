@@ -97,6 +97,13 @@ KEYWORD_PATTERNS: dict[str, re.Pattern] = {
     "note": re.compile(r"note|memo|draft|todo", re.IGNORECASE),
 }
 
+SENSITIVE_PATTERNS: list[str] = [
+    "身份证", "简历", "成绩单", "合同", "密码", "病历",
+]
+
+SENSITIVE_TAG: str = "sensitive"
+SENSITIVE_SUFFIX: str = " — ⚠ 检测到敏感信息"
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -122,6 +129,13 @@ def parse_file(file_meta: FileMetadata) -> ParseResult:
             if pattern.search(name_lower):
                 keywords.append(kw)
                 tags.add(kw)
+
+        # Sensitive-file interception — check filename against sensitive patterns
+        for kw in SENSITIVE_PATTERNS:
+            if kw in file_meta.name_before_drop:
+                tags.add(SENSITIVE_TAG)
+                summary += SENSITIVE_SUFFIX
+                break
 
         # Compute a short content hash stub
         hash_input = f"{file_meta.path}:{file_meta.size_bytes}"
