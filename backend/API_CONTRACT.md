@@ -67,7 +67,25 @@
 用户将文件拖入 AI Dropzone 窗口后，前端采集文件元信息并立即发送此请求，
 获得 AI 分类结果和命名建议，展示给用户预览。
 
-### 2.2 Request — 单文件解析
+### 2.2 敏感文件识别
+
+Mock AI 解析器内置了基础敏感信息拦截规则。如果 `file.name_before_drop` 中包含以下任一关键词，系统会自动标记该文件：
+
+| 敏感词 |
+|--------|
+| `身份证` `简历` `成绩单` `合同` `密码` `病历` |
+
+**命中后的行为：**
+
+- 标签集合中自动追加 `"sensitive"` 标签
+- `summary` 末尾补充 `" — ⚠ 检测到敏感信息"` 警告
+- 前端可据此触发二次确认弹窗或红色高亮提示
+- 分类与命名等其他字段不受影响
+
+> 此功能当前仅在 Mock AI 层实现。接入真 LLM 后，敏感文件识别将由模型提示词接管，
+> 实现更语义化的隐私文件检测（如识别不含关键词但内容涉及隐私的文档）。
+
+### 2.3 Request — 单文件解析
 
 ```
 POST /parse
@@ -93,7 +111,7 @@ POST /parse
 | `context_tags` | `string[]?` | no | 用户在 UI 中预选的标签 |
 | `prefer_mock` | `bool` | no | 强制使用 Mock AI（即使已配置真 LLM） |
 
-### 2.3 Request — 批量解析
+### 2.4 Request — 批量解析
 
 ```
 POST /parse/batch
@@ -128,7 +146,7 @@ POST /parse/batch
 | `context_tags` | `string[]?` | no | — |
 | `prefer_mock` | `bool` | no | — |
 
-### 2.4 Response — 成功
+### 2.5 Response — 成功（普通文件）
 
 ```json
 {
@@ -147,7 +165,28 @@ POST /parse/batch
 }
 ```
 
-### 2.5 Response — 失败
+### 2.6 Response — 成功（敏感文件）
+
+当文件名包含敏感关键词时（如"个人简历_2025.pdf"），返回中自动包含 `"sensitive"` 标签与警告文案：
+
+```json
+{
+  "status": "success",
+  "data": {
+    "file_path": "C:\\Users\\demo\\Documents\\个人简历_2025.pdf",
+    "suggested_name": "document_a1b2c3d4_个人简历_2025.pdf",
+    "category": "pdf",
+    "tags": ["document", "pdf", "sensitive"],
+    "summary": "A Portable Document Format file suitable for sharing. — ⚠ 检测到敏感信息",
+    "keywords": [],
+    "confidence": 0.85,
+    "parsed_at": "2026-05-12T08:30:00.500000"
+  },
+  "error": null
+}
+```
+
+### 2.7 Response — 失败
 
 ```json
 {
@@ -157,7 +196,7 @@ POST /parse/batch
 }
 ```
 
-### 2.6 Response — 批量
+### 2.8 Response — 批量
 
 ```json
 {
