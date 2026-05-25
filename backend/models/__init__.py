@@ -3,6 +3,7 @@ from .parser import ParseRequest, ParseResult, ParseItem, BatchParseRequest, Bat
 from .renamer import RenameRequest, RenameResult, RenameItem, NamingSchema
 from .rollback import RollbackEntry, UndoRequest, UndoResult
 from .exporter import ExportRequest, ExportResult, ExportManifest, ManifestEntry
+from .settings import WorkspaceUpdateRequest, WorkspaceUpdateResponse
 
 __all__ = [
     "FileCategory",
@@ -26,4 +27,6 @@ __all__ = [
     "ExportResult",
     "ExportManifest",
     "ManifestEntry",
+    "WorkspaceUpdateRequest",
+    "WorkspaceUpdateResponse",
 ]

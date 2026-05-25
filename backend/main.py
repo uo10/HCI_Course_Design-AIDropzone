@@ -10,14 +10,16 @@ Start the server:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .models.exporter import ExportRequest, ExportResult
 from .models.parser import BatchParseRequest, BatchParseResult, ParseRequest, ParseResult
 from .models.renamer import RenameRequest, RenameResult
 from .models.rollback import UndoRequest, UndoResult
-from .models.exporter import ExportRequest, ExportResult
+from .models.settings import WorkspaceUpdateRequest, WorkspaceUpdateResponse
 from .modules.mock_ai_parser import parse_file
 from .modules.file_renamer import rename_files
 from .modules.rollback import undo_operation
 from .modules.tag_exporter import export_packages
+from .utils.config import get_workspace_root, set_workspace_root
 
 app = FastAPI(title="AI Dropzone Backend", version="1.0.0")
 
@@ -72,3 +74,42 @@ def route_undo(body: UndoRequest) -> UndoResult:
 def route_export(body: ExportRequest) -> ExportResult:
     """Exports files matching the given tags as a .zip archive with manifest."""
     return export_packages(body)
+
+
+# ---------------------------------------------------------------------------
+# Settings routes
+# ---------------------------------------------------------------------------
+
+@app.get("/settings/workspace", response_model=dict)
+def route_get_workspace() -> dict:
+    """Return the absolute path of the active workspace (整理篮)."""
+    try:
+        ws = get_workspace_root()
+        return {
+            "status": "success",
+            "workspace_root": str(ws),
+            "exists": ws.is_dir(),
+        }
+    except Exception as exc:
+        return {"status": "failure", "error": str(exc)}
+
+
+@app.post("/settings/workspace", response_model=WorkspaceUpdateResponse)
+def route_set_workspace(body: WorkspaceUpdateRequest) -> WorkspaceUpdateResponse:
+    """Change the workspace root directory.  The backend validates write
+    permission before persisting the new path."""
+    from .models.common import OperationStatus
+
+    try:
+        new_root = set_workspace_root(body.new_path)
+        return WorkspaceUpdateResponse(
+            status=OperationStatus.SUCCESS,
+            workspace_root=str(new_root),
+            message=f"Workspace updated to '{new_root}'",
+        )
+    except (ValueError, OSError) as exc:
+        return WorkspaceUpdateResponse(
+            status=OperationStatus.FAILURE,
+            workspace_root="",
+            message=str(exc),
+        )

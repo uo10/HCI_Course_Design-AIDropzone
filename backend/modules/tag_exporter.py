@@ -27,30 +27,13 @@ from ..models.exporter import (
     ManifestEntry,
 )
 from ..models.rollback import OperationType, RollbackEntry
+from ..utils.config import get_workspace_root
 from .rollback import record_operation
-
-# Config path relative to this source file
-_CONFIG_PATH: Path = Path(__file__).resolve().parent.parent / "config.json"
 
 # Patterns to exclude when extracting tags from filenames
 _RE_HASH = re.compile(r"^[a-f0-9]{8,}$")       # e.g. 315f5bdb
 _RE_DATE = re.compile(r"^\d{8}$")               # e.g. 20260512
 _RE_EXT  = re.compile(r"^[a-z0-9]{1,6}$")       # short extension-like tokens
-
-
-# ---------------------------------------------------------------------------
-# Config helper
-# ---------------------------------------------------------------------------
-
-def _load_workspace_root() -> Path:
-    """Resolve workspace_root from config.json → absolute path."""
-    try:
-        raw = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
-        rel = raw.get("workspace_root", "./workspace")
-        # Resolve relative to the project root (config's parent dir)
-        return (_CONFIG_PATH.parent / rel).resolve()
-    except Exception:
-        return (_CONFIG_PATH.parent / "workspace").resolve()
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +172,7 @@ def export_packages(request: ExportRequest) -> ExportResult:
     """
     staging: Optional[Path] = None
     try:
-        workspace = _load_workspace_root()
+        workspace = get_workspace_root()
         output_dir = Path(request.output_dir).resolve()
 
         # ---- 1. Find matching files ----
