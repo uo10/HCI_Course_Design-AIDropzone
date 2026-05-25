@@ -229,7 +229,10 @@ POST /parse/batch
 前端将确认后的列表打包发送。
 
 > **⚠ 重要：执行该接口后，原文件将被物理移动（`shutil.move`）归档至统一的整理篮
-> （Workspace）目录中，不再停留于原处。这是产品的核心"清理桌面"动作——不是复制留存。
+> （Workspace）目录中，不再停留于原处。这是产品的核心"清理桌面"动作——不是复制留存。**
+>
+> **标签存储：标签不再嵌入文件名（避免 MAX_PATH 限制），而是独立存储在
+> `workspace_root/tags_index.json` 索引表中。文件名仅包含日期、哈希与原 stem。**
 
 ### 3.2 Request
 
@@ -534,9 +537,93 @@ POST /settings/workspace
 > 立即更新 `config.json` 中的 `workspace_root` 字段，所有后续的 `/rename` 和
 > `/export` 操作都会自动使用新路径。
 
+### 6.4 GET /settings/llm — 查询 LLM 配置
+
+```
+GET /settings/llm
+```
+
+**Response:** API Key **强制脱敏**（仅显示首 4 + 末 4 位，中间以 `*` 填充）：
+
+```json
+{
+  "status": "success",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-6",
+  "api_key_masked": "AI_D***********_KEY",
+  "api_key_env": "AI_DROPZONE_API_KEY",
+  "timeout_seconds": 30,
+  "max_retries": 3
+}
+```
+
+### 6.5 POST /settings/llm — 修改 LLM 配置
+
+```
+POST /settings/llm
+```
+
+**Request:** 只传需要修改的字段：
+
+```json
+{
+  "provider": "openai",
+  "model": "gpt-4o",
+  "api_key": "sk-1234567890abcdef1234567890abcdef",
+  "timeout_seconds": 60
+}
+```
+
+**Response — 成功:** 同样对 key 脱敏：
+
+```json
+{
+  "status": "success",
+  "provider": "openai",
+  "model": "gpt-4o",
+  "api_key_masked": "sk-1***************************cdef"
+}
+```
+
 ---
 
-## 7. Error Handling Convention
+## 7. Interface: Tag Library
+
+### 7.1 触发时机
+
+前端启动或用户进入标签面板时，调用此接口获取完整的标签库（所有已使用标签及其关联文件数）。
+
+### 7.2 GET /tags — 查询完整标签库
+
+```
+GET /tags
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "workspace_root": "D:\\HCI_Course_Design-AIDropzone\\workspace",
+  "total_files": 42,
+  "tags": {
+    "assignment": 5,
+    "career": 2,
+    "coursework": 8,
+    "finance": 3,
+    "job": 4,
+    "proof": 2,
+    "sensitive": 1
+  }
+}
+```
+
+> 标签与文件名的映射存储在 `workspace_root/tags_index.json` 中，
+> 实现了"标签索引"与"文件命名"的解耦，避免 MAX_PATH 限制。
+
+---
+
+## 8. Error Handling Convention
 
 所有接口遵循统一的错误模式：
 
@@ -554,7 +641,7 @@ POST /settings/workspace
 
 ---
 
-## 8. Data Flow Summary
+## 9. Data Flow Summary
 
 ```
 [设置整理篮路径]

@@ -29,7 +29,7 @@ class NamingSchema(BaseModel):
     """
 
     pattern: str = Field(
-        default="{tag}_{date}_{name}.{ext}",
+        default="{date}_{name}.{ext}",
         description="Format string using allowed placeholders",
     )
     separator: str = Field(default="_", description="Char inserted between pattern segments")

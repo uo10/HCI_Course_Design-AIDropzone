@@ -32,6 +32,7 @@ from ..models.renamer import (
 from ..models.rollback import OperationType, RollbackEntry
 from ..utils.config import get_workspace_root
 from .rollback import record_operation
+from .tag_index import set_tags as index_set_tags
 
 
 def rename_files(request: RenameRequest) -> RenameResult:
@@ -242,8 +243,8 @@ def _auto_increment(path: Path) -> Path:
 def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
     """Record rollback entry, then **move** (not copy) src→dst via shutil.move.
 
-    The source file is physically relocated; no copy remains at the original
-    path.  This is the core "清理桌面" action.
+    Tags are written to the workspace tag index (tags_index.json) instead of
+    being embedded in the filename — this avoids MAX_PATH issues.
     """
     entry = RollbackEntry(
         entry_id=0,  # assigned by record_operation
@@ -261,3 +262,6 @@ def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
         dst.unlink()
 
     shutil.move(str(src), str(dst))
+
+    # Write tags to the decoupled index
+    index_set_tags(dst.parent, dst.name, tags)

@@ -19,7 +19,8 @@ from .modules.mock_ai_parser import parse_file
 from .modules.file_renamer import rename_files
 from .modules.rollback import undo_operation
 from .modules.tag_exporter import export_packages
-from .utils.config import get_workspace_root, set_workspace_root
+from .modules.tag_index import all_tags as get_all_tags
+from .utils.config import get_workspace_root, load_config, save_config, set_workspace_root
 
 app = FastAPI(title="AI Dropzone Backend", version="1.0.0")
 
@@ -113,3 +114,90 @@ def route_set_workspace(body: WorkspaceUpdateRequest) -> WorkspaceUpdateResponse
             workspace_root="",
             message=str(exc),
         )
+
+
+# ---------------------------------------------------------------------------
+# Tag library
+# ---------------------------------------------------------------------------
+
+@app.get("/tags", response_model=dict)
+def route_get_tags() -> dict:
+    """Return the full tag library: every tag currently in use + its file count."""
+    try:
+        ws = get_workspace_root()
+        from .modules.tag_index import load_index
+        index = load_index(ws)
+
+        tag_counts: dict[str, int] = {}
+        for file_tags in index.values():
+            for t in file_tags:
+                tag_counts[t] = tag_counts.get(t, 0) + 1
+
+        return {
+            "status": "success",
+            "workspace_root": str(ws),
+            "total_files": len(index),
+            "tags": dict(sorted(tag_counts.items())),
+        }
+    except Exception as exc:
+        return {"status": "failure", "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# LLM configuration
+# ---------------------------------------------------------------------------
+
+def _mask_key(key: str) -> str:
+    """Mask an API key for safe display: show first 4 + last 4 chars."""
+    if not key:
+        return ""
+    if len(key) <= 8:
+        return "*" * len(key)
+    return key[:4] + "*" * (len(key) - 8) + key[-4:]
+
+
+@app.get("/settings/llm", response_model=dict)
+def route_get_llm_config() -> dict:
+    """Return the current LLM configuration.  The API key is masked."""
+    try:
+        cfg = load_config()
+        llm = cfg.get("ai_parser_options", {}).get("llm", {})
+        raw_key = llm.get("api_key", "") or llm.get("api_key_env", "")
+        return {
+            "status": "success",
+            "provider": llm.get("provider", ""),
+            "model": llm.get("model", ""),
+            "api_key_masked": _mask_key(raw_key),
+            "api_key_env": llm.get("api_key_env", ""),
+            "timeout_seconds": llm.get("timeout_seconds", 30),
+            "max_retries": llm.get("max_retries", 3),
+        }
+    except Exception as exc:
+        return {"status": "failure", "error": str(exc)}
+
+
+@app.post("/settings/llm", response_model=dict)
+def route_set_llm_config(body: dict) -> dict:
+    """Update the LLM configuration.  Only supplied fields are changed."""
+    try:
+        cfg = load_config()
+        llm_opts = cfg.setdefault("ai_parser_options", {}).setdefault("llm", {})
+
+        for field in ("provider", "model", "api_key_env", "api_key"):
+            if field in body and body[field] is not None:
+                llm_opts[field] = body[field]
+
+        for int_field in ("timeout_seconds", "max_retries"):
+            if int_field in body and body[int_field] is not None:
+                llm_opts[int_field] = int(body[int_field])
+
+        save_config(cfg)
+
+        return {
+            "status": "success",
+            "provider": llm_opts.get("provider", ""),
+            "model": llm_opts.get("model", ""),
+            "api_key_masked": _mask_key(llm_opts.get("api_key", llm_opts.get("api_key_env", ""))),
+        }
+    except Exception as exc:
+        return {"status": "failure", "error": str(exc)}

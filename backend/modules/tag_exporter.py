@@ -1,8 +1,9 @@
 """
 Tag-Based Package Exporter.
 
-Groups files by tags, copies them to a staging directory, writes a manifest,
-compresses everything into a .zip, and records a rollback entry.
+Groups files by tags (read from workspace/tags_index.json), copies them to a
+staging directory, writes a manifest, compresses everything into a .zip, and
+records a rollback entry.
 
 Public API:
     export_packages(request) -> ExportResult
@@ -11,8 +12,6 @@ Public API:
 from __future__ import annotations
 
 import hashlib
-import json
-import re
 import shutil
 import tempfile
 from datetime import datetime
@@ -29,79 +28,7 @@ from ..models.exporter import (
 from ..models.rollback import OperationType, RollbackEntry
 from ..utils.config import get_workspace_root
 from .rollback import record_operation
-
-# Patterns to exclude when extracting tags from filenames
-_RE_HASH = re.compile(r"^[a-f0-9]{8,}$")       # e.g. 315f5bdb
-_RE_DATE = re.compile(r"^\d{8}$")               # e.g. 20260512
-_RE_EXT  = re.compile(r"^[a-z0-9]{1,6}$")       # short extension-like tokens
-
-
-# ---------------------------------------------------------------------------
-# Tag index
-# ---------------------------------------------------------------------------
-
-def _build_tag_index(workspace: Path) -> dict[str, set[Path]]:
-    """Walk *workspace* and map each tag-like filename token to matching files.
-
-    Only regular files are indexed.  Directories are skipped.
-    """
-    index: dict[str, set[Path]] = {}
-    if not workspace.is_dir():
-        return index
-
-    for entry in workspace.iterdir():
-        if not entry.is_file():
-            continue
-        tokens = _extract_tag_tokens(entry.stem)
-        for token in tokens:
-            index.setdefault(token, set()).add(entry.resolve())
-    return index
-
-
-def _extract_tag_tokens(stem: str) -> set[str]:
-    """Return the set of tag-like tokens from a filename stem.
-
-    Example: 'document_readme_315f5bdb' → {'document', 'readme'}
-    """
-    tokens: set[str] = set()
-    for part in stem.split("_"):
-        low = part.lower()
-        if not low:
-            continue
-        if _RE_HASH.match(low):
-            continue
-        if _RE_DATE.match(low):
-            continue
-        if _RE_EXT.match(low) and len(low) <= 4:
-            continue
-        # Accept only alpha + optional trailing digits (e.g. 'photo2')
-        if re.match(r"^[a-z][a-z0-9]*$", low):
-            tokens.add(low)
-    return tokens
-
-
-def _find_files_by_tags(
-    tags: set[str],
-    workspace: Path,
-) -> tuple[list[Path], dict[str, set[str]]]:
-    """Return (files, file_tags_map) where each file has ALL requested tags."""
-    index = _build_tag_index(workspace)
-
-    # Start with files matching the first tag, then intersect
-    tag_list = sorted(tags)
-    if not tag_list:
-        return [], {}
-
-    candidates: set[Path] = index.get(tag_list[0], set()).copy()
-    for tag in tag_list[1:]:
-        candidates &= index.get(tag, set())
-
-    # Build per-file tag map
-    file_tags: dict[str, set[str]] = {}
-    for p in sorted(candidates):
-        file_tags[str(p)] = _extract_tag_tokens(p.stem)
-
-    return sorted(candidates), file_tags
+from .tag_index import load_index
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +89,9 @@ def _sha256_hex(path: Path) -> str:
 def export_packages(request: ExportRequest) -> ExportResult:
     """Export files matching *request.tags* as a .zip archive.
 
-    Steps:
-        1. Scan workspace for files whose names contain ALL requested tags.
+    Files are selected by querying the workspace tag index (tags_index.json)
+    rather than parsing filenames.  Steps:
+        1. Query tag index for files with ALL requested tags.
         2. Copy matches into a staging directory.
         3. Generate manifest.json inside staging.
         4. Compress staging → .zip via shutil.make_archive.
@@ -175,8 +103,18 @@ def export_packages(request: ExportRequest) -> ExportResult:
         workspace = get_workspace_root()
         output_dir = Path(request.output_dir).resolve()
 
-        # ---- 1. Find matching files ----
-        matched, file_tags = _find_files_by_tags(request.tags, workspace)
+        # ---- 1. Find matching files from tag index ----
+        index_data = load_index(workspace)
+        tag_list = sorted(request.tags)
+        matched: list[Path] = []
+        file_tags: dict[str, set[str]] = {}
+
+        for filename, file_tags_list in index_data.items():
+            if set(tag_list).issubset(set(file_tags_list)):
+                fpath = (workspace / filename).resolve()
+                if fpath.is_file():
+                    matched.append(fpath)
+                    file_tags[str(fpath)] = set(file_tags_list)
 
         # ---- 2. Create staging directory ----
         staging = Path(tempfile.mkdtemp(prefix="aidropzone_export_"))
