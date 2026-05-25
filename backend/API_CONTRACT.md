@@ -228,6 +228,9 @@ POST /parse/batch
 用户在 AI 解析结果预览界面中确认/修改文件名和标签后，点击"确认重命名"按钮。
 前端将确认后的列表打包发送。
 
+> **⚠ 重要：执行该接口后，原文件将被物理移动（`shutil.move`）归档至统一的整理篮
+> （Workspace）目录中，不再停留于原处。这是产品的核心"清理桌面"动作——不是复制留存。
+
 ### 3.2 Request
 
 ```
@@ -280,7 +283,7 @@ POST /rename
   "renamed": [
     {
       "old": "C:\\Users\\demo\\Desktop\\screenshot_web.png",
-      "new": "C:\\Users\\demo\\Desktop\\design_20260512_screenshot_web.png",
+      "new": "C:\\Users\\demo\\Documents\\AIDropzone_Workspace\\design_20260512_screenshot_web.png",
       "tags": ["design", "screenshot"]
     }
   ],
@@ -301,7 +304,7 @@ POST /rename
   "renamed": [
     {
       "old": "C:\\Users\\demo\\Desktop\\screenshot_web.png",
-      "new": "C:\\Users\\demo\\Desktop\\design_20260512_screenshot_web.png",
+      "new": "C:\\Users\\demo\\Documents\\AIDropzone_Workspace\\design_20260512_screenshot_web.png",
       "tags": ["design", "screenshot"]
     }
   ],
@@ -466,7 +469,74 @@ q1_reports.zip
 
 ---
 
-## 6. Error Handling Convention
+## 6. Interface: Settings / Workspace
+
+### 6.1 触发时机
+
+前端启动时调用 GET 获取当前整理篮路径（用于 UI 展示）。
+用户在设置面板中修改整理篮路径时调用 POST 更新。
+
+### 6.2 GET /settings/workspace — 查询当前路径
+
+```
+GET /settings/workspace
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "workspace_root": "C:\\Users\\demo\\Documents\\AIDropzone_Workspace",
+  "exists": true
+}
+```
+
+### 6.3 POST /settings/workspace — 修改路径
+
+```
+POST /settings/workspace
+```
+
+**Request:**
+
+```json
+{
+  "new_path": "D:\\MyArchive\\Dropzone"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `new_path` | `string` | yes | 新的整理篮绝对路径（或相对项目根目录的路径） |
+
+**Response — 成功:**
+
+```json
+{
+  "status": "success",
+  "workspace_root": "D:\\MyArchive\\Dropzone",
+  "message": "Workspace updated to 'D:\\MyArchive\\Dropzone'"
+}
+```
+
+**Response — 失败（权限不足）:**
+
+```json
+{
+  "status": "failure",
+  "workspace_root": "",
+  "message": "Directory is not writable: 'D:\\MyArchive\\Dropzone': ..."
+}
+```
+
+> 后端在持久化前会验证目录的读写权限（写入 sentinel 文件并清理）。验证通过后
+> 立即更新 `config.json` 中的 `workspace_root` 字段，所有后续的 `/rename` 和
+> `/export` 操作都会自动使用新路径。
+
+---
+
+## 7. Error Handling Convention
 
 所有接口遵循统一的错误模式：
 
@@ -484,24 +554,30 @@ q1_reports.zip
 
 ---
 
-## 7. Data Flow Summary
+## 8. Data Flow Summary
 
 ```
+[设置整理篮路径]
+    │
+    ▼
+  POST /settings/workspace ──── 验证 & 持久化 workspace_root
+    │
 [拖拽文件]
     │
     ▼
-  POST /parse  ────  AI 解析（Mock / Real LLM）
+  POST /parse  ────  AI 解析（Mock / Real LLM）+ 敏感文件拦截
     │
     ▼
 [前端展示解析结果 & 用户确认]
     │
     ▼
-  POST /rename ────  物理重命名（先写回滚日志）
+  POST /rename ────  跨目录 move 至 workspace（先写回滚日志）
+    │                 ★ 原文件从桌面/原位置消失，归入整理篮
     │
-    ├── 用户满意 → POST /export ──── 标签打包导出
+    ├── 用户满意 → POST /export ──── 从 workspace 筛选标签 → 打包 .zip
     │                     │
     │                     ▼
     │                POST /undo ──── 撤销导出（删除 zip）
     │
-    └── 用户不满意 → POST /undo ──── 撤销重命名（文件还原）
+    └── 用户不满意 → POST /undo ──── 撤销重命名（从 workspace 搬回原处）
 ```

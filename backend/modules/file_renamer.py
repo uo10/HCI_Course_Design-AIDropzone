@@ -6,6 +6,9 @@ Public API:
 
 Rules (per CLAUDE.md):
     - Every rename NOT in dry-run mode records a rollback entry FIRST.
+    - When dry_run=False, files are moved **across directories** into the
+      workspace root (整理篮).  This means the source file is physically
+      relocated — no copy is left behind.  This is the core "桌面清理" action.
     - All paths handled via pathlib.
     - Every public function returns a structured Pydantic result.
 """
@@ -27,6 +30,7 @@ from ..models.renamer import (
     RenameResult,
 )
 from ..models.rollback import OperationType, RollbackEntry
+from ..utils.config import get_workspace_root
 from .rollback import record_operation
 
 
@@ -34,12 +38,14 @@ def rename_files(request: RenameRequest) -> RenameResult:
     """Execute a batch file-rename operation.
 
     dry_run=True  → compute target paths, return preview, no disk writes.
-    dry_run=False → record rollback entry per file, then physically rename.
+    dry_run=False → record rollback entry per file, then **move** (not copy)
+                     each file into the active workspace root directory.
     """
     try:
         schema = request.naming
         now = datetime.utcnow()
         preview = request.dry_run
+        workspace = get_workspace_root()
 
         renamed: list[dict] = []
         skipped: list[dict] = []
@@ -49,7 +55,7 @@ def rename_files(request: RenameRequest) -> RenameResult:
         plans: list[dict] = []
         for item in request.items:
             try:
-                plans.append(_build_plan(item, schema, now, request.conflict_mode))
+                plans.append(_build_plan(item, schema, now, workspace, request.conflict_mode))
             except Exception as exc:
                 errors.append({"path": item.source_path, "error": str(exc)})
 
@@ -67,7 +73,6 @@ def rename_files(request: RenameRequest) -> RenameResult:
             dst = plan["target"]
             tags = list(item.tags_applied)
 
-            # Check if this plan was already marked with a resolution issue
             if plan.get("skip_reason"):
                 skipped.append({"path": str(src), "reason": plan["skip_reason"]})
                 continue
@@ -81,7 +86,7 @@ def rename_files(request: RenameRequest) -> RenameResult:
                 })
                 continue
 
-            # ---- REAL EXECUTION ----
+            # ---- REAL EXECUTION: cross-directory move into workspace ----
             try:
                 _execute_single(src, dst, tags)
                 renamed.append({
@@ -117,18 +122,23 @@ def _build_plan(
     item: RenameItem,
     schema: NamingSchema,
     timestamp: datetime,
+    workspace: Path,
     conflict_mode: RenameMode,
 ) -> dict:
-    """Resolve source/target paths and handle conflicts.  Returns a plan dict
-    or raises if the source file does not exist at all."""
+    """Resolve source/target paths and handle conflicts.
+
+    The destination is always *inside* the workspace root directory
+    (cross-directory move).  Returns a plan dict or raises if the source
+    file does not exist at all.
+    """
     src = Path(item.source_path).resolve()
     if not src.is_file():
         raise FileNotFoundError(f"Source file not found: {src}")
 
     new_filename = _render_filename(item, schema, timestamp)
-    dst = src.with_name(new_filename)
+    dst = (workspace / new_filename).resolve()
 
-    # Conflict detection
+    # Conflict detection (within the workspace target)
     if dst.exists() and not dst.samefile(src):
         if conflict_mode == RenameMode.SKIP:
             return {"item": item, "source": src, "target": dst, "skip_reason": "target_exists"}
@@ -230,7 +240,11 @@ def _auto_increment(path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
-    """Record rollback entry, then perform the rename.  Raises on failure."""
+    """Record rollback entry, then **move** (not copy) src→dst via shutil.move.
+
+    The source file is physically relocated; no copy remains at the original
+    path.  This is the core "清理桌面" action.
+    """
     entry = RollbackEntry(
         entry_id=0,  # assigned by record_operation
         operation=OperationType.RENAME,
@@ -239,6 +253,8 @@ def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
         tags_snapshot=tags,
     )
     record_operation(entry)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
 
     # If overwriting, remove the destination first
     if dst.exists():

@@ -1,5 +1,5 @@
 {
-  "workspace_root": "./workspace",
+  "workspace_root": "D:\\HCI_Course_Design-AIDropzone\\workspace",
   "ai_parser": "mock",
   "ai_parser_options": {
     "mock": {},
