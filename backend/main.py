@@ -122,10 +122,15 @@ def route_set_workspace(body: WorkspaceUpdateRequest) -> WorkspaceUpdateResponse
 
 @app.get("/tags", response_model=dict)
 def route_get_tags() -> dict:
-    """Return the full tag library: every tag currently in use + its file count."""
+    """Return the full tag library: every tag currently in use + its file count.
+
+    Auto-discovers any workspace files not yet in the index before
+    returning results, so manually placed files show up immediately.
+    """
     try:
         ws = get_workspace_root()
-        from .modules.tag_index import load_index
+        from .modules.tag_index import load_index, rescan_index
+        rescan_index(ws)  # pick up any unindexed workspace files
         index = load_index(ws)
 
         tag_counts: dict[str, int] = {}
@@ -138,6 +143,28 @@ def route_get_tags() -> dict:
             "workspace_root": str(ws),
             "total_files": len(index),
             "tags": dict(sorted(tag_counts.items())),
+        }
+    except Exception as exc:
+        return {"status": "failure", "error": str(exc)}
+
+
+@app.post("/tags/rescan", response_model=dict)
+def route_rescan_tags() -> dict:
+    """Explicitly rescan the workspace and rebuild the tag index.
+
+    Use this after manually adding files to the workspace directory,
+    or when the index appears out-of-sync.
+    """
+    try:
+        ws = get_workspace_root()
+        from .modules.tag_index import rescan_index, load_index
+        added = rescan_index(ws)
+        index = load_index(ws)
+        return {
+            "status": "success",
+            "workspace_root": str(ws),
+            "newly_indexed": added,
+            "total_files": len(index),
         }
     except Exception as exc:
         return {"status": "failure", "error": str(exc)}

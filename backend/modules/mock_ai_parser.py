@@ -252,7 +252,7 @@ def _match_keywords(name: str, keywords: list[str]) -> str:
 # Filename generator
 # ======================================================================
 
-def _suggest_name(file_meta: FileMetadata, result: dict) -> str:
+def _suggest_name(file_meta: FileMetadata, result: dict, content_hash: str = "") -> str:
     """Build a clean suggested filename:  scenario_prefix_date_hash.ext"""
     ext = file_meta.extension.lower().lstrip(".") or "unknown"
     stem = Path(file_meta.name_before_drop).stem
@@ -261,9 +261,7 @@ def _suggest_name(file_meta: FileMetadata, result: dict) -> str:
     if len(stem) > 40:
         stem = stem[:40]
 
-    hash_input = f"{file_meta.path}:{file_meta.size_bytes}"
-    sha = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:8]
-
+    sha = content_hash[:8] if content_hash else "00000000"
     date_str = datetime.utcnow().strftime("%Y%m%d")
 
     sc: Scenario | None = result.get("scenario")
@@ -278,10 +276,33 @@ def _suggest_name(file_meta: FileMetadata, result: dict) -> str:
 def parse_file(file_meta: FileMetadata) -> ParseResult:
     """Run the full mock-AI pipeline on a single file.
 
+    Opens the actual file on disk to compute a real SHA-256 hash and
+    verify its existence / size.  The classifier still uses filename +
+    extension heuristics (Mock mode), but the hash and size are real.
+
     Returns ParseResult(success=True) with a ParseItem containing
     a chain-of-thought summary, 2-3 tags, and a sanitised suggested name.
     """
     try:
+        # ── Actually open the file to get real metadata ──
+        content_hash = ""
+        real_size = file_meta.size_bytes
+        try:
+            src = Path(file_meta.path)
+            if src.is_file():
+                sha = hashlib.sha256()
+                with open(src, "rb") as fh:
+                    while True:
+                        chunk = fh.read(65536)
+                        if not chunk:
+                            break
+                        sha.update(chunk)
+                content_hash = sha.hexdigest()
+                real_size = src.stat().st_size
+        except (OSError, PermissionError):
+            pass  # use metadata size as fallback
+
+        # ── Classify ──
         result = _classify(file_meta.extension, file_meta.name_before_drop)
         tags = result["tags"]
         summary = result["summary"]
@@ -295,7 +316,15 @@ def parse_file(file_meta: FileMetadata) -> ParseResult:
                 summary += SENSITIVE_SUFFIX
                 break
 
-        suggested_name = _suggest_name(file_meta, result)
+        # Append real file stats to the summary
+        size_kb = real_size / 1024
+        if size_kb >= 1024:
+            size_str = f"{size_kb/1024:.1f}MB"
+        else:
+            size_str = f"{size_kb:.0f}KB" if size_kb >= 1 else f"{real_size}B"
+        summary += f" | 文件大小 {size_str}，SHA256={content_hash[:12] if content_hash else 'N/A'}"
+
+        suggested_name = _suggest_name(file_meta, result, content_hash)
 
         item = ParseItem(
             file_path=file_meta.path,

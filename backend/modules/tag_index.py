@@ -12,16 +12,29 @@ Public API:
     get_tags(workspace, filename) → list[str]
     find_by_tags(workspace, tags) → list[Path]
     all_tags(workspace) → set[str]
+    rescan_index(workspace) → int  (returns # newly indexed files)
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-from typing import Optional
-
 
 INDEX_FILENAME = "tags_index.json"
+
+# Heuristic tag extraction patterns for auto-indexing unregistered files
+_RE_HASH = re.compile(r"^[a-f0-9]{8,}$")
+_RE_DATE = re.compile(r"^\d{8}$")
+
+# Known tag-like tokens that our Mock AI scenario engine produces + category fallbacks
+_KNOWN_TAGS: set[str] = {
+    "coursework", "assignment", "job", "career", "finance", "proof",
+    "document", "text", "image", "media", "video", "audio",
+    "archive", "compressed", "code", "spreadsheet", "data",
+    "presentation", "slides", "pdf", "photo", "screenshot",
+    "draft", "readme", "note", "report", "sensitive",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -77,15 +90,69 @@ def get_tags(workspace: Path, filename: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Auto-discovery: scan workspace for files not yet in the index
+# ---------------------------------------------------------------------------
+
+def _extract_tags_from_filename(filename: str) -> set[str]:
+    """Heuristically extract tag-like tokens from a filename stem."""
+    stem = Path(filename).stem
+    tokens: set[str] = set()
+    for part in stem.split("_"):
+        low = part.lower()
+        if not low or _RE_HASH.match(low) or _RE_DATE.match(low):
+            continue
+        if len(low) <= 20 and low in _KNOWN_TAGS:
+            tokens.add(low)
+    # Ensure minimum: every file gets at least "file"
+    if not tokens:
+        tokens.add("file")
+    return tokens
+
+
+def rescan_index(workspace: Path) -> int:
+    """Scan workspace for regular files not yet in the tag index, and
+    auto-assign heuristic tags to them.
+
+    Existing index entries are preserved (never overwritten).
+
+    Returns the number of newly indexed files.
+    """
+    data = load_index(workspace)
+    added = 0
+
+    try:
+        for entry in workspace.iterdir():
+            if not entry.is_file():
+                continue
+            name = entry.name
+            if name == INDEX_FILENAME:
+                continue
+            if name not in data:
+                data[name] = sorted(_extract_tags_from_filename(name))
+                added += 1
+    except OSError:
+        pass
+
+    if added:
+        save_index(workspace, data)
+
+    return added
+
+
+# ---------------------------------------------------------------------------
 # Query helpers (used by exporter)
 # ---------------------------------------------------------------------------
 
 def find_by_tags(workspace: Path, tags: set[str]) -> list[Path]:
     """Return workspace files that have ALL requested tags (AND semantics).
 
-    Only returns files that actually exist on disk — stale entries are
-    automatically cleaned from the index.
+    Before querying, runs a rescan to pick up any files that were placed
+    in the workspace without going through /rename.  Stale entries are
+    automatically cleaned.
     """
+    # Auto-discover unindexed files first
+    rescan_index(workspace)
+
     data = load_index(workspace)
     tag_list = sorted(tags)
     if not tag_list:
@@ -113,6 +180,9 @@ def find_by_tags(workspace: Path, tags: set[str]) -> list[Path]:
 
 def all_tags(workspace: Path) -> set[str]:
     """Return the union of all tags present in the index (the full tag library)."""
+    # Auto-discover unindexed files first
+    rescan_index(workspace)
+
     data = load_index(workspace)
     result: set[str] = set()
     for file_tags in data.values():
