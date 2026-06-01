@@ -1,0 +1,74 @@
+{
+  "name": "ai-dropzone",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json && node scripts/rename-electron.cjs",
+    "env:doctor": "node scripts/env-doctor.cjs",
+    "env:bootstrap": "powershell -ExecutionPolicy Bypass -File ./scripts/env-bootstrap.ps1",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && npm run build:electron && node scripts/run-electron.cjs\"",
+    "electron:dev:panel": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && npm run build:electron && node scripts/run-electron.cjs --panel\"",
+    "electron:dev:full": "concurrently -k \"vite --mode full\" \"wait-on http://127.0.0.1:5173 && npm run build:electron && node scripts/run-electron.cjs --panel\"",
+    "dist": "npm run build && npm run build:electron && electron-builder",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test:api": "node scripts/test-api.mjs",
+    "test:backend": "python scripts/smoke_backend.py"
+  },
+  "dependencies": {
+    "file-selector": "^2.1.2",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.16.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-dropzone": "^15.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^24.12.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9.39.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.46.0",
+    "vite": "^6.4.0",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.hci.ai-dropzone",
+    "productName": "AI Dropzone",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "AI Dropzone ${version}.exe"
+    }
+  }
+}

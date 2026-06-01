@@ -2,6 +2,9 @@
 
 基于 Python 的 Windows 桌面后台服务，接收拖拽文件并通过 AI 智能分类、重命名、标签打包导出。
 
+> **新手环境与完整启动流程（前后端）** → 请看 **[SETUP.md](./SETUP.md)**  
+> **前端桌面 / Mock / 完整功能** → 请看 **[frontend/README.md](./frontend/README.md)**
+
 ## 快速开始
 
 ```bash
@@ -41,6 +44,7 @@ OpenAPI Schema：`http://127.0.0.1:8000/openapi.json`
 
 ## 文档
 
+- **[环境配置与新手流程 SETUP.md](./SETUP.md)** — Python/Node、`.env`、端口、双窗口启动
 - [API 接口契约](./backend/API_CONTRACT.md) — 请求/响应 JSON 示例与字段说明
 - [后台架构总结](./backend/ARCHITECTURE.md) — 核心机制与安全设计
-- [CLAUDE.md](./CLAUDE.md) — 项目开发规范
+- [前端 README](./frontend/README.md) — Electron 命令与联调
