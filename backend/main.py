@@ -15,7 +15,6 @@ from .models.parser import BatchParseRequest, BatchParseResult, ParseRequest, Pa
 from .models.renamer import RenameRequest, RenameResult
 from .models.rollback import UndoRequest, UndoResult
 from .models.settings import WorkspaceUpdateRequest, WorkspaceUpdateResponse
-from .modules.mock_ai_parser import parse_file
 from .modules.file_renamer import rename_files
 from .modules.rollback import undo_operation
 from .modules.tag_exporter import export_packages
@@ -33,10 +32,44 @@ app.add_middleware(
 )
 
 
+def _get_parser():
+    """Return the active parse_file function (mock or real LLM) based on config.
+
+    If the LLM parser fails to import or initialise, falls back to mock.
+    """
+    cfg = load_config()
+    if cfg.get("ai_parser") == "llm":
+        try:
+            from .modules.llm_parser import parse_file as llm_parse
+            return llm_parse
+        except Exception:
+            pass  # fall back to mock
+    from .modules.mock_ai_parser import parse_file as mock_parse
+    return mock_parse
+
+
 @app.post("/parse", response_model=ParseResult)
 def route_parse(body: ParseRequest) -> ParseResult:
-    """AI-parses a single file. Returns classification, tags, and naming suggestion."""
-    return parse_file(body.file)
+    """AI-parses a single file. Uses real LLM if configured, else Mock.
+
+    If the real LLM call fails, automatically falls back to the Mock parser
+    so the frontend always gets a usable result.
+    """
+    if body.prefer_mock:
+        from .modules.mock_ai_parser import parse_file as mock_parse
+        return mock_parse(body.file)
+
+    parser = _get_parser()
+    result = parser(body.file)
+
+    # If LLM failed and the user didn't explicitly request mock, fall back
+    if result.status == "failure" and not body.prefer_mock:
+        cfg = load_config()
+        if cfg.get("ai_parser") == "llm":
+            from .modules.mock_ai_parser import parse_file as mock_parse
+            result = mock_parse(body.file)
+
+    return result
 
 
 @app.post("/parse/batch", response_model=BatchParseResult)
@@ -44,12 +77,23 @@ def route_parse_batch(body: BatchParseRequest) -> BatchParseResult:
     """AI-parses multiple files in one call."""
     from .models.common import OperationStatus
 
+    parser = _get_parser() if not body.prefer_mock else None
+    if body.prefer_mock or parser is None:
+        from .modules.mock_ai_parser import parse_file as parser
+
     items, errors = [], []
     for fm in body.files:
-        r = parse_file(fm)
+        r = parser(fm)
         if r.status == "success" and r.data:
             items.append(r.data)
         else:
+            # Fallback to mock on per-file failure
+            if not body.prefer_mock:
+                from .modules.mock_ai_parser import parse_file as mock_parse
+                r2 = mock_parse(fm)
+                if r2.status == "success" and r2.data:
+                    items.append(r2.data)
+                    continue
             errors.append({"path": fm.path, "error": r.error})
 
     return BatchParseResult(
