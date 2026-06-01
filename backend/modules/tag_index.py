@@ -23,6 +23,15 @@ from pathlib import Path
 
 INDEX_FILENAME = "tags_index.json"
 
+# Files that should never appear in the tag index or be exported
+_SKIP_FILENAMES: set[str] = {
+    INDEX_FILENAME,
+    INDEX_FILENAME + ".tmp",
+    "manifest.json",
+    "rollback_log.json",
+    ".aidropzone_write_test",
+}
+
 # Heuristic tag extraction patterns for auto-indexing unregistered files
 _RE_HASH = re.compile(r"^[a-f0-9]{8,}$")
 _RE_DATE = re.compile(r"^\d{8}$")
@@ -125,7 +134,7 @@ def rescan_index(workspace: Path) -> int:
             if not entry.is_file():
                 continue
             name = entry.name
-            if name == INDEX_FILENAME:
+            if name in _SKIP_FILENAMES:
                 continue
             if name not in data:
                 data[name] = sorted(_extract_tags_from_filename(name))

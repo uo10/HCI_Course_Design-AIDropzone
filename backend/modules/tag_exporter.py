@@ -28,7 +28,7 @@ from ..models.exporter import (
 from ..models.rollback import OperationType, RollbackEntry
 from ..utils.config import get_workspace_root
 from .rollback import record_operation
-from .tag_index import load_index
+from .tag_index import _SKIP_FILENAMES, load_index
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +110,8 @@ def export_packages(request: ExportRequest) -> ExportResult:
         file_tags: dict[str, set[str]] = {}
 
         for filename, file_tags_list in index_data.items():
+            if filename in _SKIP_FILENAMES:
+                continue
             if set(tag_list).issubset(set(file_tags_list)):
                 fpath = (workspace / filename).resolve()
                 if fpath.is_file():
