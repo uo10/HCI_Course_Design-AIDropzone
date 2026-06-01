@@ -228,3 +228,98 @@ def route_set_llm_config(body: dict) -> dict:
         }
     except Exception as exc:
         return {"status": "failure", "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Full config (GET /config + PUT /config) — per TEMP_API_ALIGNMENT.md
+# ---------------------------------------------------------------------------
+
+@app.get("/config", response_model=dict)
+def route_get_config() -> dict:
+    """Return the full backend configuration for the settings page.
+
+    LLM API key is masked; api_key_set indicates whether a key is present.
+    """
+    try:
+        cfg = load_config()
+        llm = cfg.get("ai_parser_options", {}).get("llm", {})
+        raw_key = llm.get("api_key", "") or llm.get("api_key_env", "")
+        return {
+            "config": {
+                "workspace_root": str(get_workspace_root()),
+                "ai_parser": cfg.get("ai_parser", "mock"),
+                "ai_parser_options": {
+                    "llm": {
+                        "provider": llm.get("provider", ""),
+                        "model": llm.get("model", ""),
+                        "base_url": llm.get("base_url", ""),
+                        "api_key_set": bool(raw_key),
+                        "api_key": _mask_key(raw_key),
+                    },
+                },
+            },
+        }
+    except Exception as exc:
+        return {"config": None, "error": str(exc)}
+
+
+@app.put("/config", response_model=dict)
+def route_put_config(body: dict) -> dict:
+    """Batch-update backend configuration.  Only supplied fields change.
+
+    Body keys (all optional):
+        workspace_root, ai_parser, llm_provider, llm_model,
+        llm_base_url, llm_api_key
+    """
+    try:
+        cfg = load_config()
+        llm_opts = cfg.setdefault("ai_parser_options", {}).setdefault("llm", {})
+
+        if "workspace_root" in body and body["workspace_root"]:
+            cfg["workspace_root"] = body["workspace_root"]
+        if "ai_parser" in body:
+            cfg["ai_parser"] = body["ai_parser"]
+        if "llm_provider" in body:
+            llm_opts["provider"] = body["llm_provider"]
+        if "llm_model" in body:
+            llm_opts["model"] = body["llm_model"]
+        if "llm_base_url" in body:
+            llm_opts["base_url"] = body["llm_base_url"]
+        if "llm_api_key" in body and body["llm_api_key"]:
+            llm_opts["api_key"] = body["llm_api_key"]
+
+        save_config(cfg)
+
+        raw_key = llm_opts.get("api_key", "") or llm_opts.get("api_key_env", "")
+        return {
+            "config": {
+                "workspace_root": str(get_workspace_root()),
+                "ai_parser": cfg.get("ai_parser", "mock"),
+                "ai_parser_options": {
+                    "llm": {
+                        "provider": llm_opts.get("provider", ""),
+                        "model": llm_opts.get("model", ""),
+                        "base_url": llm_opts.get("base_url", ""),
+                        "api_key_set": bool(raw_key),
+                        "api_key": _mask_key(raw_key),
+                    },
+                },
+            },
+        }
+    except Exception as exc:
+        return {"config": None, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Journal (GET /journal) — per TEMP_API_ALIGNMENT.md
+# ---------------------------------------------------------------------------
+
+@app.get("/journal", response_model=list)
+def route_get_journal() -> list:
+    """Return the full rollback journal as an array of entries."""
+    try:
+        from pathlib import Path as _Path
+        from .modules.rollback import _read_journal
+        return _read_journal(_Path(__file__).resolve().parent / "rollback_log.json")
+    except Exception as exc:
+        return [{"error": str(exc)}]

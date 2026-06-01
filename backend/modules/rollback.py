@@ -85,9 +85,14 @@ def undo_operation(
     request: UndoRequest,
     journal_path: Optional[Path] = None,
 ) -> UndoResult:
-    """Undo the most recent N operations recorded in the journal.
+    """Undo operations recorded in the journal.
 
-    For each qualifying entry (newest first):
+    Two modes:
+      - BY ID:   request.entry_ids → undo only those specific entries.
+      - BY N:    request.count → undo the most recent N entries
+                 (optionally filtered by request.filter_operation).
+
+    For each qualifying entry:
       - RENAME  → move new_path back to original_path
       - EXPORT  → delete the exported zip
       - DELETE  → cannot undo (recorded as failed)
@@ -103,16 +108,20 @@ def undo_operation(
                 remaining_log_size=0,
             )
 
-        # Select candidates (newest last in the array)
-        candidates = entries
-        if request.filter_operation is not None:
-            candidates = [
-                e for e in entries
-                if e.get("operation") == request.filter_operation.value
-            ]
-
-        # Take the most recent `count` entries
-        selected = candidates[-request.count:] if request.count < len(candidates) else candidates
+        # Select candidates
+        if request.entry_ids is not None:
+            # ── BY ID: lookup specific entries ──
+            id_set = set(request.entry_ids)
+            selected = [e for e in entries if e.get("entry_id") in id_set]
+        else:
+            # ── BY N: most recent N ──
+            candidates = entries
+            if request.filter_operation is not None:
+                candidates = [
+                    e for e in entries
+                    if e.get("operation") == request.filter_operation.value
+                ]
+            selected = candidates[-request.count:] if request.count < len(candidates) else candidates
         # Process newest first (reverse order)
         selected.reverse()
 
