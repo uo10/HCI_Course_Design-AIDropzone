@@ -211,6 +211,11 @@ def _render_filename(
     for ch in invalid:
         result = result.replace(ch, schema.separator)
 
+    # Safety: ensure the extension is preserved.  If the generated filename
+    # lost the source file's extension for any reason, re-append it.
+    if ext and ext != "unknown" and not result.endswith(f".{ext}"):
+        result = f"{result}.{ext}"
+
     return result
 
 
