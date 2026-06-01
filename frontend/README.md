@@ -29,9 +29,25 @@
 ```powershell
 cd D:\HCI_teamwork\HCI_Course_Design-AIDropzone\frontend
 npm install
+npm run env:doctor
 ```
 
 后续所有 `npm run …` 都在 **`frontend/`** 目录下执行。
+
+### 一键环境修复（推荐）
+
+若遇到 `Electron failed to install correctly`、`build:electron` 失败、版本混乱等问题，直接执行：
+
+```powershell
+npm run env:bootstrap
+```
+
+该命令会：
+
+1. 检查 Node 是否在推荐范围（18/20/22 LTS）  
+2. 清理 `node_modules` / `package-lock.json`  
+3. 重装依赖并验证 Electron 可执行文件  
+4. 自动跑一次 `build:electron`
 
 ---
 
@@ -89,7 +105,7 @@ npm run electron:dev
 npm run electron:dev
 ```
 
-- 贴边 **悬浮球**（52px）：移入滑出、拖动吸附、**单击**打开大窗  
+- 贴边 **悬浮球**（56px）：移入滑出、拖动吸附、**双击**展开大窗  
 - 大窗 **◢** 收起到球，**×** 关闭  
 
 ### 3. 界面里操作
@@ -215,6 +231,8 @@ python frontend/scripts/smoke_backend.py
 | 命令 | 说明 |
 |------|------|
 | `npm install` | 安装依赖（首次） |
+| `npm run env:doctor` | 一键检查 Node/TS/Electron/构建是否正常 |
+| `npm run env:bootstrap` | 一键修复环境（清理 + 重装 + 验证） |
 | `npm run dev` | 浏览器调试 UI（`http://127.0.0.1:5173`） |
 | `npm run electron:dev` | Electron + 默认**悬浮球** |
 | `npm run electron:dev:panel` | Electron + 大面板 + **Mock 演示** |
@@ -258,7 +276,7 @@ npm run dist
 
 ### 运行 `electron:dev` 好像没窗口？
 
-默认是 **贴边悬浮球**（窗口只有 52px，贴边只露出一条）。请改用：
+默认是 **贴边悬浮球**（窗口只有 56px，贴边只露出一条）。请改用：
 
 ```cmd
 npm run electron:dev:panel
@@ -287,4 +305,4 @@ npm run electron:dev:panel
 - 改名：`dry_run: true` 预览 → `dry_run: false` 确认  
 - HTTP 撤销：先 `undo`，成功用 `undone[]` 回写卡片；失败用本地快照  
 
-产品与前端协作说明见 [`frontend_note/AI_Dropzone_产品方向.md`](frontend_note/AI_Dropzone_产品方向.md)（v2 方向 C + C2，**尚未按该文档改代码**）。
+当前进度、环境配置与未来计划见 [`frontend_note/进度与计划.md`](frontend_note/进度与计划.md)。

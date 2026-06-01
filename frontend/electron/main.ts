@@ -6,11 +6,13 @@ const VITE_DEV_URL = 'http://127.0.0.1:5173';
 const isDev = !app.isPackaged;
 
 /** 360 式悬浮球：窗口与球同大，贴边时仅露出一条 */
-const BALL_SIZE = 52;
-const BALL_PEEK = 14;
-const PANEL_DEFAULT = { width: 380, height: 560 };
-const PANEL_MIN = { width: 320, height: 400 };
-const THEME_BG = '#0f1419';
+const BALL_SIZE = 56;
+const BALL_PEEK = 16;
+/** 窗口中心距工作区边缘小于此值时，松手后贴边缩入；否则保持自由漂浮 */
+const BALL_DOCK_THRESHOLD = 52;
+/** 与网页 max-w-4xl 双栏详情接近的默认尺寸 */
+const PANEL_DEFAULT = { width: 920, height: 680 };
+const PANEL_MIN = { width: 720, height: 520 };
 
 type ShellMode = 'ball' | 'panel';
 type BallEdge = 'left' | 'right' | 'top' | 'bottom';
@@ -32,28 +34,69 @@ let ballEdge: BallEdge = 'right';
 /** 贴左右边时为 y，贴上下边时为 x */
 let ballAnchor = 0;
 let ballDockExpanded = false;
+/** true = 桌面任意位置漂浮；false = 已贴边，可 peek/展开 */
+let ballFloating = true;
 
-async function buildFileMetadata(filePath: string): Promise<FileMetadataPayload> {
-  const stat = await fs.stat(filePath);
-  const name_before_drop = path.basename(filePath);
-  const extension = path.extname(filePath).slice(1).toLowerCase() || 'unknown';
+function normalizeFilePath(filePath: string): string {
+  let p = filePath.trim().replace(/^["']|["']$/g, '');
+  if (process.platform === 'win32') {
+    p = p.replace(/\//g, '\\');
+  }
+  return path.normalize(p);
+}
 
-  return {
-    path: filePath,
-    size_bytes: stat.size,
-    extension,
-    mime_type: 'application/octet-stream',
-    name_before_drop,
-  };
+async function buildFileMetadata(
+  filePath: string,
+  hint?: Partial<FileMetadataPayload>,
+): Promise<FileMetadataPayload> {
+  const resolved = normalizeFilePath(filePath);
+  if (!resolved) {
+    throw new Error('文件路径为空');
+  }
+
+  try {
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile()) {
+      throw new Error('路径指向的不是文件');
+    }
+    const name_before_drop = path.basename(resolved);
+    const extension = path.extname(resolved).slice(1).toLowerCase() || 'unknown';
+    return {
+      path: resolved,
+      size_bytes: stat.size,
+      extension,
+      mime_type: 'application/octet-stream',
+      name_before_drop,
+    };
+  } catch (statErr) {
+    if (hint?.name_before_drop != null && hint.size_bytes != null) {
+      try {
+        await fs.access(resolved);
+      } catch {
+        const msg = statErr instanceof Error ? statErr.message : String(statErr);
+        throw new Error(`无法访问文件「${resolved}」: ${msg}`);
+      }
+      return {
+        path: resolved,
+        size_bytes: hint.size_bytes,
+        extension: hint.extension ?? 'unknown',
+        mime_type: hint.mime_type ?? 'application/octet-stream',
+        name_before_drop: hint.name_before_drop,
+      };
+    }
+    const msg = statErr instanceof Error ? statErr.message : String(statErr);
+    throw new Error(`无法读取「${resolved}」: ${msg}`);
+  }
 }
 
 function notifyShellMode(mode: ShellMode): void {
   mainWindow?.webContents.send('shell:modeChanged', mode);
 }
 
-function setBallTransparency(ball: boolean): void {
+/** 窗口底色必须始终全透明，否则 Win 会在圆角外露出方形色块 */
+function ensureWindowTransparent(): void {
   if (!mainWindow) return;
-  mainWindow.setBackgroundColor(ball ? '#00000000' : THEME_BG);
+  mainWindow.setBackgroundColor('#00000000');
 }
 
 function clampBoundsToWorkArea(
@@ -151,7 +194,7 @@ function ballBoundsExpanded(wa: Electron.Rectangle): Electron.Rectangle {
 }
 
 function applyBallBounds(): void {
-  if (!mainWindow || shellMode !== 'ball') return;
+  if (!mainWindow || shellMode !== 'ball' || ballFloating) return;
   const wa = workAreaForBall();
   const target = ballDockExpanded
     ? ballBoundsExpanded(wa)
@@ -159,19 +202,28 @@ function applyBallBounds(): void {
   mainWindow.setBounds(target);
 }
 
-function snapBallToNearestEdge(): void {
-  if (!mainWindow) return;
+/** 松手时：仅当靠近屏幕边缘才贴边缩入，否则保持当前自由位置 */
+function maybeDockBallAfterDrag(): void {
+  if (!mainWindow || shellMode !== 'ball') return;
   const b = mainWindow.getBounds();
-  const wa = screen.getDisplayNearestPoint(b).workArea;
-  const cx = b.x + b.width / 2;
-  const cy = b.y + b.height / 2;
+  const wa = screen.getDisplayNearestPoint({
+    x: b.x + Math.floor(b.width / 2),
+    y: b.y + Math.floor(b.height / 2),
+  }).workArea;
 
-  const distLeft = cx - wa.x;
-  const distRight = wa.x + wa.width - cx;
-  const distTop = cy - wa.y;
-  const distBottom = wa.y + wa.height - cy;
+  const distLeft = b.x - wa.x;
+  const distRight = wa.x + wa.width - (b.x + b.width);
+  const distTop = b.y - wa.y;
+  const distBottom = wa.y + wa.height - (b.y + b.height);
   const min = Math.min(distLeft, distRight, distTop, distBottom);
 
+  if (min > BALL_DOCK_THRESHOLD) {
+    ballFloating = true;
+    return;
+  }
+
+  ballFloating = false;
+  ballDockExpanded = false;
   if (min === distRight) {
     ballEdge = 'right';
     ballAnchor = b.y;
@@ -185,18 +237,17 @@ function snapBallToNearestEdge(): void {
     ballEdge = 'bottom';
     ballAnchor = b.x;
   }
-
-  ballDockExpanded = false;
   applyBallBounds();
 }
 
 function initBallDock(): void {
+  if (!mainWindow) return;
   const wa = screen.getPrimaryDisplay().workArea;
-  ballEdge = 'right';
-  ballAnchor =
-    wa.y + Math.floor((wa.height - BALL_SIZE) / 2);
+  ballFloating = true;
   ballDockExpanded = false;
-  applyBallBounds();
+  const x = wa.x + Math.floor((wa.width - BALL_SIZE) / 2);
+  const y = wa.y + Math.floor((wa.height - BALL_SIZE) / 2);
+  mainWindow.setBounds({ x, y, width: BALL_SIZE, height: BALL_SIZE });
 }
 
 function applyBallMode(): void {
@@ -204,29 +255,43 @@ function applyBallMode(): void {
 
   if (shellMode === 'panel') {
     savedPanelBounds = mainWindow.getBounds();
-    const b = mainWindow.getBounds();
-    ballAnchor = b.y + Math.floor((b.height - BALL_SIZE) / 2);
-    ballEdge = 'right';
   }
 
+  const wa = workAreaForBall();
+  const b = mainWindow.getBounds();
+  const x = Math.min(
+    wa.x + wa.width - BALL_SIZE,
+    Math.max(wa.x, b.x + Math.floor((b.width - BALL_SIZE) / 2)),
+  );
+  const y = Math.min(
+    wa.y + wa.height - BALL_SIZE,
+    Math.max(wa.y, b.y + Math.floor((b.height - BALL_SIZE) / 2)),
+  );
+
   shellMode = 'ball';
-  setBallTransparency(true);
+  /** 必须清空标题，否则 Win 会在 56×56 窗口旁绘制「AI Dropzone」文字条 */
+  mainWindow.setTitle('');
+  ensureWindowTransparent();
   mainWindow.setResizable(false);
   mainWindow.setMinimumSize(BALL_SIZE, BALL_SIZE);
   mainWindow.setMaximumSize(BALL_SIZE, BALL_SIZE);
+  ballFloating = true;
   ballDockExpanded = false;
-  snapBallToNearestEdge();
+  mainWindow.setBounds({ x, y, width: BALL_SIZE, height: BALL_SIZE });
+  /** 小球窗口关闭阴影，减轻 Windows 下拖动时外缘「方框/描边」视觉异常 */
+  mainWindow.setHasShadow(false);
   notifyShellMode('ball');
 }
 
 function applyPanelMode(): void {
   if (!mainWindow) return;
 
-  const wa = workAreaForBall();
-  const ballRect =
-    ballDockExpanded
-      ? ballBoundsExpanded(wa)
-      : ballBoundsPeek(wa);
+  const ballRect = mainWindow.getBounds();
+  const center = {
+    x: ballRect.x + Math.floor(ballRect.width / 2),
+    y: ballRect.y + Math.floor(ballRect.height / 2),
+  };
+  const wa = screen.getDisplayNearestPoint(center).workArea;
 
   const width = savedPanelBounds?.width ?? PANEL_DEFAULT.width;
   const height = savedPanelBounds?.height ?? PANEL_DEFAULT.height;
@@ -234,13 +299,15 @@ function applyPanelMode(): void {
   const y = ballRect.y - Math.floor((height - ballRect.height) / 2);
 
   shellMode = 'panel';
-  setBallTransparency(false);
+  mainWindow.setTitle('AI Dropzone');
+  ensureWindowTransparent();
   mainWindow.setMaximumSize(10000, 10000);
   mainWindow.setMinimumSize(PANEL_MIN.width, PANEL_MIN.height);
   mainWindow.setResizable(true);
   mainWindow.setBounds(
     clampBoundsToWorkArea({ x, y, width, height }, wa),
   );
+  mainWindow.setHasShadow(true);
   notifyShellMode('panel');
 }
 
@@ -258,9 +325,11 @@ function createWindow(): void {
     resizable: startPanel,
     frame: false,
     alwaysOnTop: true,
+    /** 透明 + Win11 圆角：底色只由网页在圆角矩形内绘制，禁止原生方形铺色 */
     transparent: true,
-    backgroundColor: startPanel ? THEME_BG : '#00000000',
-    hasShadow: false,
+    backgroundColor: '#00000000',
+    roundedCorners: true,
+    hasShadow: startPanel,
     skipTaskbar: false,
     webPreferences: {
       contextIsolation: true,
@@ -268,6 +337,7 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });
+  mainWindow.setTitle('');
 
   if (isDev) {
     void mainWindow.loadURL(VITE_DEV_URL);
@@ -276,9 +346,11 @@ function createWindow(): void {
   }
 
   mainWindow.webContents.once('did-finish-load', () => {
+    ensureWindowTransparent();
     if (!startPanel) {
       initBallDock();
-      setBallTransparency(true);
+      mainWindow?.setTitle('');
+      mainWindow?.setHasShadow(false);
     }
     notifyShellMode(shellMode);
   });
@@ -304,13 +376,17 @@ app.on('window-all-closed', () => {
   }
 });
 
-ipcMain.handle('dropzone:getFileMetadata', async (_event: IpcMainInvokeEvent, filePath: string) => {
-  try {
-    return await buildFileMetadata(filePath);
-  } catch {
-    throw new Error('无法读取文件信息，请检查文件是否存在或是否有权限。');
-  }
-});
+ipcMain.handle(
+  'dropzone:getFileMetadata',
+  async (
+    _event: IpcMainInvokeEvent,
+    payload: string | { path: string; hint?: Partial<FileMetadataPayload> },
+  ) => {
+    const filePath = typeof payload === 'string' ? payload : payload.path;
+    const hint = typeof payload === 'string' ? undefined : payload.hint;
+    return buildFileMetadata(filePath, hint);
+  },
+);
 
 ipcMain.handle('dropzone:getFileMetadataBatch', async (_event: IpcMainInvokeEvent, paths: string[]) => {
   const results: FileMetadataPayload[] = [];
@@ -342,20 +418,20 @@ ipcMain.on('window:close', () => {
 });
 
 ipcMain.on('ball:expandDock', () => {
-  if (shellMode !== 'ball') return;
+  if (shellMode !== 'ball' || ballFloating) return;
   ballDockExpanded = true;
   applyBallBounds();
 });
 
 ipcMain.on('ball:collapseDock', () => {
-  if (shellMode !== 'ball') return;
+  if (shellMode !== 'ball' || ballFloating) return;
   ballDockExpanded = false;
   applyBallBounds();
 });
 
-ipcMain.on('ball:snapDock', () => {
+ipcMain.on('ball:finishDrag', () => {
   if (shellMode !== 'ball') return;
-  snapBallToNearestEdge();
+  maybeDockBallAfterDrag();
 });
 
 ipcMain.on('ball:dragBy', (_event, deltaX: number, deltaY: number) => {
@@ -367,4 +443,46 @@ ipcMain.on('ball:dragBy', (_event, deltaX: number, deltaY: number) => {
       : b.x + deltaX;
   if (!ballDockExpanded) ballDockExpanded = true;
   applyBallBounds();
+});
+
+/** 悬浮球：相对当前窗口位置自由平移（不贴边吸附） */
+ipcMain.on('ball:moveBy', (_event, dx: number, dy: number) => {
+  if (shellMode !== 'ball' || !mainWindow) return;
+  const b = mainWindow.getBounds();
+  const center = {
+    x: b.x + Math.floor(b.width / 2),
+    y: b.y + Math.floor(b.height / 2),
+  };
+  const wa = screen.getDisplayNearestPoint(center).workArea;
+  let nx = b.x + Math.round(dx);
+  let ny = b.y + Math.round(dy);
+  nx = Math.min(wa.x + wa.width - BALL_SIZE, Math.max(wa.x, nx));
+  ny = Math.min(wa.y + wa.height - BALL_SIZE, Math.max(wa.y, ny));
+  /** 每次移动固定宽高，避免 Win32 在拖动时把无边框窗口当成可缩放区域导致「整块变大」 */
+  mainWindow.setBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE });
+});
+
+/** 将悬浮球窗口左上角放到屏幕坐标 (left, top)，与指针抓取偏移配合实现 1:1 跟手 */
+ipcMain.on('ball:moveTo', (_event, left: number, top: number) => {
+  if (shellMode !== 'ball' || !mainWindow) return;
+  ballFloating = true;
+  let nx = Math.round(left);
+  let ny = Math.round(top);
+  const center = {
+    x: nx + Math.floor(BALL_SIZE / 2),
+    y: ny + Math.floor(BALL_SIZE / 2),
+  };
+  const wa = screen.getDisplayNearestPoint(center).workArea;
+  nx = Math.min(wa.x + wa.width - BALL_SIZE, Math.max(wa.x, nx));
+  ny = Math.min(wa.y + wa.height - BALL_SIZE, Math.max(wa.y, ny));
+  mainWindow.setBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE });
+});
+
+ipcMain.on('ball:getBoundsSync', event => {
+  if (!mainWindow) {
+    event.returnValue = null;
+    return;
+  }
+  const b = mainWindow.getBounds();
+  event.returnValue = { x: b.x, y: b.y, width: b.width, height: b.height };
 });

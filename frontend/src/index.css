@@ -1,0 +1,282 @@
+@import 'tailwindcss';
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Segoe UI', 'PingFang SC', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #e8ecf4;
+}
+
+/* ── 页面背景（浏览器 / Electron 面板外壳内） ── */
+.glass-page {
+  position: relative;
+  background:
+    radial-gradient(ellipse 80% 50% at 15% 0%, rgba(0, 120, 215, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 45% at 85% 10%, rgba(99, 102, 241, 0.06) 0%, transparent 65%),
+    linear-gradient(168deg, #e9eef6 0%, #dde6f2 45%, #d2dcea 100%);
+}
+
+.glass-page-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.glass-page-blob-a {
+  top: -20%;
+  left: -10%;
+  width: 55vmin;
+  height: 55vmin;
+  background: radial-gradient(circle, rgba(0, 120, 212, 0.35) 0%, transparent 70%);
+  opacity: 0.55;
+}
+
+.glass-page-blob-b {
+  right: -5%;
+  bottom: 0%;
+  width: 50vmin;
+  height: 50vmin;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.28) 0%, transparent 72%);
+  opacity: 0.45;
+}
+
+.glass-page-blob-c {
+  bottom: -15%;
+  left: 30%;
+  width: 45vmin;
+  height: 45vmin;
+  background: radial-gradient(circle, rgba(0, 180, 216, 255, 0.2) 0%, transparent 75%);
+  opacity: 0.4;
+}
+
+/* ── Acrylic 主卡片（Fluent / macOS 风格） ── */
+.glass-panel {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(252, 252, 252, 0.72);
+  box-shadow:
+    0 0.5px 0 rgba(0, 0, 0, 0.04),
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    0 2px 6px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8);
+  backdrop-filter: blur(40px) saturate(1.8);
+}
+
+.glass-panel-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.42);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+.glass-panel-body {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.glass-panel-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+/* ── Electron 无边框窗口拖拽区 ── */
+html.electron-app .glass-panel {
+  -webkit-app-region: no-drag;
+}
+
+html.electron-app .glass-panel-header {
+  -webkit-app-region: drag;
+}
+
+html.electron-app .glass-panel-header button {
+  -webkit-app-region: no-drag;
+}
+
+html.electron-app .glass-panel-footer {
+  -webkit-app-region: drag;
+}
+
+html.electron-app .glass-panel-footer button {
+  -webkit-app-region: no-drag;
+}
+
+html.electron-app .glass-panel-body {
+  -webkit-app-region: drag;
+}
+
+html.electron-app .glass-panel-body aside,
+html.electron-app .glass-panel-body button,
+html.electron-app .glass-panel-body input,
+html.electron-app .glass-panel-body textarea,
+html.electron-app .glass-panel-body select,
+html.electron-app .glass-panel-body a,
+html.electron-app .glass-panel-body [role='button'],
+html.electron-app .glass-panel-body .cursor-pointer,
+html.electron-app .glass-panel-body .electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ── 滚动条（细、半透明） ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+/* ── Electron：原生窗口全透明，圆角/圆形只由网页裁切绘制 ── */
+html.electron-app,
+html.electron-app body,
+html.electron-app #root {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* 主面板：单层圆角外壳铺满窗口（无 padding，避免四角露出方框） */
+html.electron-app:not(.electron-ball-mode) .electron-panel-shell {
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  border-radius: 24px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 80% 50% at 15% 0%, rgba(0, 120, 215, 0.1) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 45% at 85% 10%, rgba(99, 102, 241, 0.08) 0%, transparent 65%),
+    linear-gradient(168deg, #e9eef6 0%, #dde6f2 45%, #d2dcea 100%) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.35),
+    0 16px 48px rgba(15, 23, 42, 0.14);
+}
+
+html.electron-app:not(.electron-ball-mode) .glass-page {
+  min-height: 100%;
+  height: 100%;
+  padding: 0;
+  background: transparent !important;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+html.electron-app:not(.electron-ball-mode) .glass-page-blob {
+  display: block;
+  opacity: 0.4;
+}
+
+/* 面板内不再套第二层圆角描边，避免「方窗外再套一方框」 */
+html.electron-app:not(.electron-ball-mode) .glass-panel {
+  height: 100%;
+  max-height: none !important;
+  max-width: none !important;
+  flex: 1;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  background: rgba(252, 252, 252, 0.55);
+}
+
+/* ── 悬浮球：#root 裁成圆形，去掉 56×56 方窗里的可见方底 ── */
+html.electron-app.electron-ball-mode #root {
+  border-radius: 50%;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+html.electron-app .ball-shell {
+  -webkit-app-region: no-drag;
+}
+
+.ball-shell {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  user-select: none;
+  cursor: grab;
+  outline: none;
+  border: none;
+  box-shadow: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ball-shell:active {
+  cursor: grabbing;
+}
+
+.ball-core {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: linear-gradient(145deg, #0a84ff 0%, #5b5bd6 52%, #7c3aed 100%);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 120, 212, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.ball-core-icon {
+  width: 20px;
+  height: 20px;
+  opacity: 0.95;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+/* ── 交互微光 ── */
+button,
+[role='button'] {
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.glass-panel button:hover,
+.glass-panel [role='button']:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}

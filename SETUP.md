@@ -26,14 +26,36 @@ Windows **桌面悬浮窗**：拖入文件 → AI/Mock 解析与标签 → 预�
 | **Python** | 3.11+ | 后端 |
 | **Node.js** | 18 LTS 或 20 LTS | 前端与 Electron |
 | **npm** | 随 Node 安装 | 前端依赖 |
+| **TypeScript（全局可选）** | 6.0+ | 若要全局 `tsc`；项目本地已锁定 6.x |
+
+> ⚠️ **TypeScript 版本说明**  
+> 项目 `frontend/package.json` 中 TypeScript 已锁定 `^6.0.0`。  
+> 运行 `npm install` 时项目本地会安装 6.x，与全局版本无关。  
+> 若你的全局 `tsc -v` 是旧版本，**不影响项目构建**，`npm run build:electron` 始终使用项目本地 (`npx tsc`)。
 
 检查版本（CMD 或 PowerShell 均可）：
 
-```cmd
+```powershell
 python --version
 node --version
 npm --version
+# 确认项目本地 TypeScript 版本（应为 6.x）
+cd frontend
+npx tsc -v
 ```
+
+### 2.1 一键环境自检 / 修复（前端）
+
+为避免新同学遇到 Electron 安装损坏、Node 版本不兼容等问题，`frontend` 已内置两个命令：
+
+```powershell
+cd D:\HCI_teamwork\HCI_Course_Design-AIDropzone\frontend
+npm run env:doctor
+npm run env:bootstrap
+```
+
+- `env:doctor`：只检查（Node 版本、本地 TypeScript、Electron 可执行文件、build:electron）。  
+- `env:bootstrap`：自动清理依赖并重装，修复 Electron 安装；若 Node 不在推荐范围，会提示切换到 Node 20 LTS。
 
 ---
 
@@ -57,7 +79,7 @@ HCI_Course_Design-AIDropzone/
     ├── .env.example         ← Mock 环境变量模板
     ├── .env.full            ← 完整功能（HTTP）环境变量（给 electron:dev:full 用）
     ├── .env.local           ← 本地覆盖（需自己创建，不会提交 Git）
-    └── frontend_note/       ← 前端学习笔记 01～05
+    └── frontend_note/       ← 进度与计划（单文档）
 ```
 
 ---
@@ -141,6 +163,7 @@ pip install -r requirements.txt
 ```cmd
 cd /d D:\HCI_teamwork\HCI_Course_Design-AIDropzone\frontend
 npm install
+npm run env:doctor
 ```
 
 ### 步骤 C：可选 — 准备导出测试目录
@@ -342,6 +365,7 @@ npm run dist
 | `npm run test:api` 失败 | 先启后端；检查 8000/8765 |
 | `Copy-Item` 在 CMD 里报错 | CMD 用 `copy .env.example .env.local` |
 | 8000 WinError 10013 | 换端口 8765，前后端配置一起改 |
+| Electron failed to install correctly | 在 `frontend/` 执行 `npm run env:bootstrap`，再重试 `npm run electron:dev:full` |
 
 ---
 
@@ -368,7 +392,7 @@ npm run dist
 | 文档 | 内容 |
 |------|------|
 | [README.md](./frontend/README.md) | 启动命令、Mock/HTTP、打包、FAQ |
-| [frontend_note/AI_Dropzone_产品方向.md](./frontend/frontend_note/AI_Dropzone_产品方向.md) | v2 产品方向（方向 C + C2）、流程、规范、实施排期 |
+| [frontend_note/进度与计划.md](./frontend/frontend_note/进度与计划.md) | 当前进度、环境配置、未来计划（v2 方向 C + C2） |
 
 ### 环境变量模板
 
