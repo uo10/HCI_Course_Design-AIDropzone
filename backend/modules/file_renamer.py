@@ -165,12 +165,18 @@ def _render_filename(
         {tag}  — primary tag from tags_applied (first alphabetically)
         {date} — YYYYMMDD
         {hash} — SHA-256 of file contents, first 8 hex chars
-        {name} — stem of item.new_name (or source stem if empty)
+        {name} — original source-file stem (not the AI-suggested name,
+                  to avoid double-prefixing)
         {ext}  — extension without leading dot
     """
     src = Path(item.source_path)
     ext = src.suffix.lstrip(".").lower() or "unknown"
-    stem = Path(item.new_name).stem if item.new_name else src.stem
+
+    # Use the SOURCE file stem, not the AI-suggested new_name stem.
+    # The naming pattern is the single source of truth for filename
+    # generation — using the AI-suggested name's stem would cause
+    # double-prefixing (e.g. 20260601_coursework_20260601_...).
+    stem = src.stem
 
     primary_tag = (
         sorted(item.tags_applied)[0]
