@@ -2,6 +2,13 @@ import type { FileMetadata } from '../api/types';
 
 export type ShellMode = 'ball' | 'panel';
 
+export interface BallBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface DropzoneBridge {
   isElectron: boolean;
   getPathForFile(file: File): string;
@@ -13,8 +20,15 @@ export interface DropzoneBridge {
   closeWindow(): void;
   expandBallDock(): void;
   collapseBallDock(): void;
-  snapBallDock(): void;
+  /** 拖动结束：靠近边缘则贴边缩入，否则保持当前位置 */
+  finishBallDrag(): void;
   dragBallBy(deltaX: number, deltaY: number): void;
+  /** 悬浮球：按屏幕像素增量自由移动窗口（相对当前位置） */
+  moveBallBy(deltaX: number, deltaY: number): void;
+  /** 悬浮球：将窗口左上角放到屏幕坐标（与抓取偏移配合，实现与指针 1:1 跟手） */
+  moveBallTo(left: number, top: number): void;
+  /** 主进程同步读悬浮球窗口外接矩形（仅用于按下时算抓取偏移） */
+  getBallBoundsSync(): BallBounds | null;
   onShellModeChanged(callback: (mode: ShellMode) => void): () => void;
 }
 

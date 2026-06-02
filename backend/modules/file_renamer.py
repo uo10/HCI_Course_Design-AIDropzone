@@ -32,6 +32,7 @@ from ..models.renamer import (
 from ..models.rollback import OperationType, RollbackEntry
 from ..utils.config import get_workspace_root
 from .rollback import record_operation
+from .tag_index import set_tags as index_set_tags
 
 
 def rename_files(request: RenameRequest) -> RenameResult:
@@ -164,12 +165,18 @@ def _render_filename(
         {tag}  — primary tag from tags_applied (first alphabetically)
         {date} — YYYYMMDD
         {hash} — SHA-256 of file contents, first 8 hex chars
-        {name} — stem of item.new_name (or source stem if empty)
+        {name} — original source-file stem (not the AI-suggested name,
+                  to avoid double-prefixing)
         {ext}  — extension without leading dot
     """
     src = Path(item.source_path)
     ext = src.suffix.lstrip(".").lower() or "unknown"
-    stem = Path(item.new_name).stem if item.new_name else src.stem
+
+    # Use the SOURCE file stem, not the AI-suggested new_name stem.
+    # The naming pattern is the single source of truth for filename
+    # generation — using the AI-suggested name's stem would cause
+    # double-prefixing (e.g. 20260601_coursework_20260601_...).
+    stem = src.stem
 
     primary_tag = (
         sorted(item.tags_applied)[0]
@@ -203,6 +210,11 @@ def _render_filename(
     invalid = '<>:"/\\|?*'
     for ch in invalid:
         result = result.replace(ch, schema.separator)
+
+    # Safety: ensure the extension is preserved.  If the generated filename
+    # lost the source file's extension for any reason, re-append it.
+    if ext and ext != "unknown" and not result.endswith(f".{ext}"):
+        result = f"{result}.{ext}"
 
     return result
 
@@ -242,8 +254,8 @@ def _auto_increment(path: Path) -> Path:
 def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
     """Record rollback entry, then **move** (not copy) src→dst via shutil.move.
 
-    The source file is physically relocated; no copy remains at the original
-    path.  This is the core "清理桌面" action.
+    Tags are written to the workspace tag index (tags_index.json) instead of
+    being embedded in the filename — this avoids MAX_PATH issues.
     """
     entry = RollbackEntry(
         entry_id=0,  # assigned by record_operation
@@ -261,3 +273,6 @@ def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
         dst.unlink()
 
     shutil.move(str(src), str(dst))
+
+    # Write tags to the decoupled index
+    index_set_tags(dst.parent, dst.name, tags)

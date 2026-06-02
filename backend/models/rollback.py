@@ -32,12 +32,16 @@ class RollbackEntry(BaseModel):
 
 
 class UndoRequest(BaseModel):
-    """Request to undo the most recent N operations."""
+    """Request to undo the most recent N operations, or specific entries by ID."""
 
-    count: int = Field(default=1, ge=1, le=100, description="Number of operations to undo")
+    count: int = Field(default=1, ge=1, le=100, description="Number of operations to undo (ignored if entry_ids set)")
     filter_operation: Optional[OperationType] = Field(
         default=None,
         description="If set, only undo operations of this type",
+    )
+    entry_ids: Optional[list[int]] = Field(
+        default=None,
+        description="Specific journal entry IDs to undo (takes precedence over count)",
     )
 
 
