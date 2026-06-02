@@ -5,7 +5,6 @@ import {
   ChevronDown,
   Lightbulb,
   Check,
-  Pencil,
   Ban,
   Shield,
   Lock,
@@ -70,17 +69,12 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
     showToast('正在改名，请稍候…');
     try {
       await onAdoptRename(file, editedName, editedTags);
-      showToast('已采用建议');
+      showToast('已确认改名');
     } catch (err) {
       showToast(err instanceof Error ? err.message : '改名失败');
     } finally {
       setAdopting(false);
     }
-  }
-
-  function handleManualEdit() {
-    inputRef.current?.focus();
-    inputRef.current?.select();
   }
 
   return (
@@ -209,7 +203,7 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 border-t border-white/40 p-4">
+      <div className="grid grid-cols-2 gap-2 border-t border-white/40 p-4">
         <button
           type="button"
           disabled={adopting}
@@ -217,15 +211,7 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
           className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-60"
         >
           <Check className="h-3.5 w-3.5" />
-          {adopting ? '处理中…' : '采用建议'}
-        </button>
-        <button
-          type="button"
-          onClick={handleManualEdit}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 py-2.5 text-xs font-medium text-slate-600 hover:bg-white"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          手动修改
+          {adopting ? '处理中…' : '确认改名'}
         </button>
         <button
           type="button"

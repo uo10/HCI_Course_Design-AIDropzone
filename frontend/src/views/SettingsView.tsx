@@ -12,6 +12,16 @@ import { validateLocalApiBase } from '../utils/apiErrors';
 const STORAGE_WORKSPACE = 'aidropzone.workspace';
 const STORAGE_LLM_KEY = 'aidropzone.llm_api_key';
 
+function isMissingConfigEndpointError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.trim();
+  return (
+    msg === '{"detail":"Not Found"}' ||
+    msg === 'HTTP 404' ||
+    msg.startsWith('HTTP 404')
+  );
+}
+
 interface Props {
   onBack: () => void;
 }
@@ -104,6 +114,15 @@ export function SettingsView({ onBack }: Props) {
           setDeepseekKey('');
         } catch (e) {
           const msg = e instanceof Error ? e.message : '保存到后端失败';
+          if (isMissingConfigEndpointError(e)) {
+            setSuccessMsg(
+              '本地设置已保存。当前后端版本缺少 /config 接口，无法写入 backend/config.json；请切到包含配置接口的后端分支后再保存一次。',
+            );
+            if (deepseekKey.trim()) {
+              setDeepseekKey('');
+            }
+            return;
+          }
           if (deepseekKey.trim()) {
             setSuccessMsg('本地设置已保存；API Key 已写入浏览器。请启动 uvicorn 后再次点击保存以写入 config.json。');
             setConfigError(msg);
