@@ -165,18 +165,24 @@ def _render_filename(
         {tag}  — primary tag from tags_applied (first alphabetically)
         {date} — YYYYMMDD
         {hash} — SHA-256 of file contents, first 8 hex chars
-        {name} — original source-file stem (not the AI-suggested name,
-                  to avoid double-prefixing)
+        {name} — stem of new_name (user-confirmed / AI-suggested name)
         {ext}  — extension without leading dot
     """
+    import re
+
     src = Path(item.source_path)
     ext = src.suffix.lstrip(".").lower() or "unknown"
 
-    # Use the SOURCE file stem, not the AI-suggested new_name stem.
-    # The naming pattern is the single source of truth for filename
-    # generation — using the AI-suggested name's stem would cause
-    # double-prefixing (e.g. 20260601_coursework_20260601_...).
-    stem = src.stem
+    # If new_name looks like a complete AI-generated name (contains date
+    # and hash segments), use it directly — don't double-process through
+    # the naming template.
+    # Pattern: prefix_YYYYMMDD_XXXXXXXX_stem.ext
+    if item.new_name and re.search(r"_\d{8}_[a-f0-9]{8,}_", item.new_name):
+        return item.new_name
+
+    # Use the user-confirmed / AI-suggested name's stem — this is what
+    # the user actually wants the file to be called.
+    stem = Path(item.new_name).stem if item.new_name else src.stem
 
     primary_tag = (
         sorted(item.tags_applied)[0]
@@ -211,8 +217,7 @@ def _render_filename(
     for ch in invalid:
         result = result.replace(ch, schema.separator)
 
-    # Safety: ensure the extension is preserved.  If the generated filename
-    # lost the source file's extension for any reason, re-append it.
+    # Safety: ensure the extension is preserved.
     if ext and ext != "unknown" and not result.endswith(f".{ext}"):
         result = f"{result}.{ext}"
 
@@ -257,6 +262,10 @@ def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
     Tags are written to the workspace tag index (tags_index.json) instead of
     being embedded in the filename — this avoids MAX_PATH issues.
     """
+    # Guard: if source and destination are the same file, don't delete it
+    if src.resolve() == dst.resolve():
+        return
+
     entry = RollbackEntry(
         entry_id=0,  # assigned by record_operation
         operation=OperationType.RENAME,
@@ -268,8 +277,8 @@ def _execute_single(src: Path, dst: Path, tags: list[str]) -> None:
 
     dst.parent.mkdir(parents=True, exist_ok=True)
 
-    # If overwriting, remove the destination first
-    if dst.exists():
+    # If overwriting, remove the destination (only if different from source)
+    if dst.exists() and not dst.samefile(src):
         dst.unlink()
 
     shutil.move(str(src), str(dst))
