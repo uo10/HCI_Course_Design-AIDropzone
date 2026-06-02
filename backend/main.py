@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models.exporter import ExportRequest, ExportResult
-from .models.parser import BatchParseRequest, BatchParseResult, ParseRequest, ParseResult
+from .models.parser import BatchParseRequest, BatchParseResult, ParseRequest, ParseResult, RegenerateRequest
 from .models.renamer import RenameRequest, RenameResult
 from .models.rollback import UndoRequest, UndoResult
 from .models.settings import WorkspaceUpdateRequest, WorkspaceUpdateResponse
@@ -32,42 +32,65 @@ app.add_middleware(
 )
 
 
-def _get_parser():
-    """Return the active parse_file function (mock or real LLM) based on config.
+def _get_style_prompt() -> str:
+    """Return the persistent naming-style prompt from config (may be empty)."""
+    return load_config().get("naming_style_prompt", "") or ""
 
-    If the LLM parser fails to import or initialise, falls back to mock.
-    """
+
+def _get_parser():
+    """Return the active parse_file function (mock or real LLM) based on config."""
     cfg = load_config()
     if cfg.get("ai_parser") == "llm":
         try:
             from .modules.llm_parser import parse_file as llm_parse
             return llm_parse
         except Exception:
-            pass  # fall back to mock
+            pass
     from .modules.mock_ai_parser import parse_file as mock_parse
     return mock_parse
 
 
 @app.post("/parse", response_model=ParseResult)
 def route_parse(body: ParseRequest) -> ParseResult:
-    """AI-parses a single file. Uses real LLM if configured, else Mock.
+    """AI-parses a single file. Uses real LLM if configured, else Mock."""
+    style = _get_style_prompt()
 
-    If the real LLM call fails, automatically falls back to the Mock parser
-    so the frontend always gets a usable result.
-    """
     if body.prefer_mock:
         from .modules.mock_ai_parser import parse_file as mock_parse
-        return mock_parse(body.file)
+        return mock_parse(body.file, style_prompt=style)
 
     parser = _get_parser()
-    result = parser(body.file)
+    result = parser(body.file, style_prompt=style)
 
-    # If LLM failed and the user didn't explicitly request mock, fall back
     if result.status == "failure" and not body.prefer_mock:
         cfg = load_config()
         if cfg.get("ai_parser") == "llm":
             from .modules.mock_ai_parser import parse_file as mock_parse
-            result = mock_parse(body.file)
+            result = mock_parse(body.file, style_prompt=style)
+
+    return result
+
+
+@app.post("/parse/regenerate", response_model=ParseResult)
+def route_parse_regenerate(body: RegenerateRequest) -> ParseResult:
+    """Regenerate a suggested name without touching the file on disk.
+
+    Combines the persistent naming-style prompt (from config) with a
+    one-time extra_prompt for this specific file.
+    """
+    style = _get_style_prompt()
+    extra = body.extra_prompt or ""
+
+    if body.prefer_mock:
+        from .modules.mock_ai_parser import parse_file as mock_parse
+        return mock_parse(body.file, style_prompt=style, extra_prompt=extra)
+
+    parser = _get_parser()
+    result = parser(body.file, style_prompt=style, extra_prompt=extra)
+
+    if result.status == "failure":
+        from .modules.mock_ai_parser import parse_file as mock_parse
+        result = mock_parse(body.file, style_prompt=style, extra_prompt=extra)
 
     return result
 
@@ -292,6 +315,7 @@ def route_get_config() -> dict:
             "config": {
                 "workspace_root": str(get_workspace_root()),
                 "ai_parser": cfg.get("ai_parser", "mock"),
+                "naming_style_prompt": cfg.get("naming_style_prompt", ""),
                 "ai_parser_options": {
                     "llm": {
                         "provider": llm.get("provider", ""),
@@ -312,8 +336,8 @@ def route_put_config(body: dict) -> dict:
     """Batch-update backend configuration.  Only supplied fields change.
 
     Body keys (all optional):
-        workspace_root, ai_parser, llm_provider, llm_model,
-        llm_base_url, llm_api_key
+        workspace_root, ai_parser, naming_style_prompt,
+        llm_provider, llm_model, llm_base_url, llm_api_key
     """
     try:
         cfg = load_config()
@@ -323,6 +347,8 @@ def route_put_config(body: dict) -> dict:
             cfg["workspace_root"] = body["workspace_root"]
         if "ai_parser" in body:
             cfg["ai_parser"] = body["ai_parser"]
+        if "naming_style_prompt" in body:
+            cfg["naming_style_prompt"] = body["naming_style_prompt"] or ""
         if "llm_provider" in body:
             llm_opts["provider"] = body["llm_provider"]
         if "llm_model" in body:
@@ -339,6 +365,7 @@ def route_put_config(body: dict) -> dict:
             "config": {
                 "workspace_root": str(get_workspace_root()),
                 "ai_parser": cfg.get("ai_parser", "mock"),
+                "naming_style_prompt": cfg.get("naming_style_prompt", ""),
                 "ai_parser_options": {
                     "llm": {
                         "provider": llm_opts.get("provider", ""),

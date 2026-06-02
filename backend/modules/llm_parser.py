@@ -183,11 +183,16 @@ def _parse_llm_response(raw: str, file_meta: FileMetadata, content_hash: str) ->
 # Public API — same signature as mock_ai_parser.parse_file
 # ---------------------------------------------------------------------------
 
-def parse_file(file_meta: FileMetadata) -> ParseResult:
+def parse_file(
+    file_meta: FileMetadata,
+    style_prompt: str = "",
+    extra_prompt: str = "",
+) -> ParseResult:
     """Real LLM-backed file analysis.
 
-    Reads the LLM config from config.json, calls the configured provider,
-    and maps the response into the standard ParseResult envelope.
+    *style_prompt* is the persistent naming-style preference from settings.
+    *extra_prompt* is a one-time hint for this specific regeneration.
+
     On any failure (network, auth, JSON parse), returns a failure result
     — the caller may then choose to fall back to Mock.
     """
@@ -208,14 +213,24 @@ def parse_file(file_meta: FileMetadata) -> ParseResult:
         except (OSError, PermissionError):
             pass
 
-        # Load LLM config
+        # Load config
         cfg = load_config()
         llm_cfg = cfg.get("ai_parser_options", {}).get("llm", {})
         provider = llm_cfg.get("provider", "openai").lower()
         timeout = int(llm_cfg.get("timeout_seconds", 30))
 
-        # Build prompts
+        # If no style_prompt was passed explicitly, load from config
+        if not style_prompt:
+            style_prompt = cfg.get("naming_style_prompt", "")
+
+        # Build system prompt with style injected
         system = SYSTEM_PROMPT
+        if style_prompt:
+            system += f"\n\nIMPORTANT STYLE GUIDELINES (apply to every naming task): {style_prompt}"
+        if extra_prompt:
+            system += f"\n\nADDITIONAL REQUEST FOR THIS FILE: {extra_prompt}"
+
+        # Build user prompt
         size_kb = file_meta.size_bytes / 1024
         user = USER_PROMPT_TEMPLATE.format(
             name_before_drop=file_meta.name_before_drop,
