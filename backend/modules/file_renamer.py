@@ -225,15 +225,21 @@ def _render_filename(
 
 
 def _compute_file_hash(path: Path, chunk_size: int = 65536) -> str:
-    """Compute SHA-256 hex digest of a file's contents."""
-    sha = hashlib.sha256()
-    with open(path, "rb") as fh:
-        while True:
-            chunk = fh.read(chunk_size)
-            if not chunk:
-                break
-            sha.update(chunk)
-    return sha.hexdigest()
+    """Compute SHA-256 hex digest of a file's contents.
+    Returns a fallback hash from path+size if the file can't be read.
+    """
+    try:
+        sha = hashlib.sha256()
+        with open(path, "rb") as fh:
+            while True:
+                chunk = fh.read(chunk_size)
+                if not chunk:
+                    break
+                sha.update(chunk)
+        return sha.hexdigest()
+    except (OSError, PermissionError):
+        fallback = f"{path}:{path.stat().st_size if path.is_file() else 0}"
+        return hashlib.sha256(fallback.encode()).hexdigest()
 
 
 def _auto_increment(path: Path) -> Path:
