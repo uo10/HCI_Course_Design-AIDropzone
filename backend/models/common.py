@@ -45,7 +45,7 @@ Tag: TypeAlias = Annotated[
         strip_whitespace=True,
         min_length=1,
         max_length=64,
-        pattern=r"^[a-z0-9_]+$",
+        pattern=r"^[^\s<>:\"/\\|?*]+$",
     ),
 ]
 

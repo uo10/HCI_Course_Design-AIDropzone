@@ -103,15 +103,23 @@ def get_tags(workspace: Path, filename: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _extract_tags_from_filename(filename: str) -> set[str]:
-    """Heuristically extract tag-like tokens from a filename stem."""
+    """Heuristically extract tag-like tokens from a filename stem.
+
+    Accepts any Unicode word characters (Chinese, Japanese, etc.)
+    in addition to the known ASCII tag set.
+    """
     stem = Path(filename).stem
     tokens: set[str] = set()
     for part in stem.split("_"):
-        low = part.lower()
-        if not low or _RE_HASH.match(low) or _RE_DATE.match(low):
+        if not part or _RE_HASH.match(part) or _RE_DATE.match(part):
             continue
-        if len(low) <= 20 and low in _KNOWN_TAGS:
-            tokens.add(low)
+        # Known ASCII tags
+        if part.lower() in _KNOWN_TAGS:
+            tokens.add(part.lower())
+        # Unicode tokens (Chinese / Japanese / Korean / etc.)
+        elif re.match(r"^[\w一-鿿㐀-䶿豈-﫿]+$", part, re.UNICODE):
+            if len(part) <= 20:
+                tokens.add(part)
     # Ensure minimum: every file gets at least "file"
     if not tokens:
         tokens.add("file")
