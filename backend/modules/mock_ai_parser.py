@@ -273,15 +273,20 @@ def _suggest_name(file_meta: FileMetadata, result: dict, content_hash: str = "")
 # Public API
 # ======================================================================
 
-def parse_file(file_meta: FileMetadata) -> ParseResult:
+def parse_file(
+    file_meta: FileMetadata,
+    style_prompt: str = "",
+    extra_prompt: str = "",
+) -> ParseResult:
     """Run the full mock-AI pipeline on a single file.
 
-    Opens the actual file on disk to compute a real SHA-256 hash and
-    verify its existence / size.  The classifier still uses filename +
-    extension heuristics (Mock mode), but the hash and size are real.
+    *style_prompt* is the persistent naming-style preference from settings
+    (e.g. "偏学术、保留英文缩写、最多25字符").
+    *extra_prompt* is a one-time hint for this specific file
+    (e.g. "强调算法名、突出实验版本").
 
-    Returns ParseResult(success=True) with a ParseItem containing
-    a chain-of-thought summary, 2-3 tags, and a sanitised suggested name.
+    Returns ParseResult with chain-of-thought summary, 2-3 tags, and a
+    suggested name that reflects any active prompts.
     """
     try:
         # ── Actually open the file to get real metadata ──
@@ -300,7 +305,7 @@ def parse_file(file_meta: FileMetadata) -> ParseResult:
                 content_hash = sha.hexdigest()
                 real_size = src.stat().st_size
         except (OSError, PermissionError):
-            pass  # use metadata size as fallback
+            pass
 
         # ── Classify ──
         result = _classify(file_meta.extension, file_meta.name_before_drop)
@@ -315,6 +320,19 @@ def parse_file(file_meta: FileMetadata) -> ParseResult:
                 tags.add(SENSITIVE_TAG)
                 summary += SENSITIVE_SUFFIX
                 break
+
+        # ── Apply style & extra prompts (Mock mode) ──
+        active_prompts: list[str] = []
+        if style_prompt:
+            active_prompts.append(f"风格要求: {style_prompt}")
+            # Try to extract keywords from the style prompt for tag enrichment
+            _apply_prompt_keywords(style_prompt, tags, keywords)
+        if extra_prompt:
+            active_prompts.append(f"本次要求: {extra_prompt}")
+            _apply_prompt_keywords(extra_prompt, tags, keywords)
+
+        if active_prompts:
+            summary = summary.rstrip(" |") + " | " + " | ".join(active_prompts)
 
         # Append real file stats to the summary
         size_kb = real_size / 1024
@@ -341,3 +359,19 @@ def parse_file(file_meta: FileMetadata) -> ParseResult:
 
     except Exception as e:
         return ParseResult(status=OperationStatus.FAILURE, error=str(e))
+
+
+def _apply_prompt_keywords(prompt: str, tags: set[str], keywords: list[str]) -> None:
+    """Extract hint keywords from a prompt string and add to tags/keywords."""
+    hints = {
+        "学术": "academic", "算法": "algorithm", "实验": "experiment",
+        "版本": "version", "英文": "english", "缩写": "abbrev",
+        "正式": "formal", "简洁": "concise", "详细": "detailed",
+        "代码": "code", "数据": "data", "图表": "chart",
+    }
+    for cn, en in hints.items():
+        if cn in prompt:
+            if en not in tags:
+                tags.add(en)
+            if en not in keywords:
+                keywords.append(en)

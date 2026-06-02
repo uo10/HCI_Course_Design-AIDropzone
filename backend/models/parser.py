@@ -89,3 +89,22 @@ class BatchParseResult(BaseModel):
         default_factory=list,
         description="Per-file errors: [{'path': ..., 'error': ...}, ...]",
     )
+
+
+class RegenerateRequest(BaseModel):
+    """Request to regenerate a file name without touching disk.
+
+    Like ParseRequest but carries an optional extra_prompt for one-time
+    naming hints and the user-confirmed tags for context.
+    """
+
+    file: FileMetadata = Field(..., description="Metadata of the file")
+    extra_prompt: str = Field(
+        default="",
+        description="One-time naming hint, e.g. '强调算法名'",
+    )
+    context_tags: Optional[list[str]] = Field(
+        default=None,
+        description="Tags already confirmed for this file (provides context)",
+    )
+    prefer_mock: bool = False
