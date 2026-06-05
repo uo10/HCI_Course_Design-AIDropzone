@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   X,
@@ -17,6 +17,9 @@ import { FileIcon } from '../utils/fileIcon';
 import { normalizeUserTag, normalizeUserTagMessage } from '../utils/normalizeUserTag';
 import { CategoryReasonBlock } from './CategoryReasonBlock';
 import { TagChip } from './TagChip';
+import { ThinkingPlaceholder } from './ThinkingPlaceholder';
+import { TypewriterText } from './TypewriterText';
+import { useTypewriter } from '../hooks/useTypewriter';
 
 interface Props {
   file: FileItem;
@@ -35,6 +38,11 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
   const [regenOpen, setRegenOpen] = useState(false);
   const [extraPrompt, setExtraPrompt] = useState('');
   const [regenerating, setRegenerating] = useState(false);
+  const [revealKey, setRevealKey] = useState(0);
+  const prevWaitingRef = useRef(file.status === 'parsing');
+
+  const isWaitingSuggestion = file.status === 'parsing' || regenerating;
+  const animateSuggestion = revealKey > 0 && !isWaitingSuggestion;
 
   const canRegenerate =
     !isMockMode() &&
@@ -42,6 +50,12 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
     file.status === 'processed' &&
     Boolean(file.parseMetadata) &&
     Boolean(onRegenerate);
+
+  const { displayText: displaySuggestedName, showCursor } = useTypewriter({
+    text: file.suggestedName,
+    enabled: animateSuggestion,
+    resetKey: `${file.id}:${revealKey}`,
+  });
 
   useEffect(() => {
     setEditedName(file.suggestedName);
@@ -51,11 +65,27 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
     setEditedTags([...file.tags]);
   }, [file.id, file.tags]);
 
+  /** 打开详情且已有结果：立即播揭示（解决半秒内解析完、后打开详情无动画） */
+  useLayoutEffect(() => {
+    if (isWaitingSuggestion || file.status !== 'processed' || !file.suggestedName) return;
+    setRevealKey(k => (k === 0 ? 1 : k));
+  }, [file.id]);
+
+  /** 详情已打开时：解析/重生成从等待 → 完成后再播一遍 */
+  useEffect(() => {
+    const waiting = isWaitingSuggestion;
+    const ended = prevWaitingRef.current && !waiting;
+    prevWaitingRef.current = waiting;
+    if (!ended || waiting || file.status !== 'processed' || !file.suggestedName) return;
+    setRevealKey(k => k + 1);
+  }, [isWaitingSuggestion, file.status, file.suggestedName, file.categoryReason]);
+
   useEffect(() => {
     setAdopting(false);
     setRegenOpen(false);
     setExtraPrompt('');
     setRegenerating(false);
+    prevWaitingRef.current = file.status === 'parsing';
   }, [file.id]);
 
   function addTag() {
@@ -181,10 +211,18 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
           </div>
           <NameBlock
             label="现文件名"
-            name={file.suggestedName}
+            name={
+              isWaitingSuggestion
+                ? ''
+                : animateSuggestion
+                  ? displaySuggestedName
+                  : file.suggestedName
+            }
             extension={file.extension}
             aiBadge
             highlight
+            waiting={isWaitingSuggestion}
+            showCursor={showCursor}
           />
         </div>
 
@@ -240,6 +278,9 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
             <CategoryReasonBlock
               summary={file.categoryReason}
               lastExtraPrompt={file.lastExtraPrompt}
+              waiting={isWaitingSuggestion}
+              animateReveal={animateSuggestion && !isWaitingSuggestion}
+              revealKey={`${file.id}:${revealKey}`}
             />
           </div>
         </div>
@@ -336,12 +377,16 @@ function NameBlock({
   extension,
   aiBadge,
   highlight,
+  waiting,
+  showCursor,
 }: {
   label: string;
   name: string;
   extension: string;
   aiBadge?: boolean;
   highlight?: boolean;
+  waiting?: boolean;
+  showCursor?: boolean;
 }) {
   return (
     <div
@@ -371,7 +416,17 @@ function NameBlock({
             </span>
           )}
         </div>
-        <p className="truncate text-sm font-medium text-slate-800">{name}</p>
+        {waiting ? (
+          <ThinkingPlaceholder label="AI 正在命名…" className="py-0.5" />
+        ) : (
+          <p className="truncate text-sm font-medium text-slate-800">
+            {aiBadge ? (
+              <TypewriterText text={name || '…'} showCursor={showCursor} />
+            ) : (
+              name
+            )}
+          </p>
+        )}
       </div>
     </div>
   );

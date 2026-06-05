@@ -58,7 +58,8 @@ export default function App() {
     syncAfterUndoRename,
   } = useFileStore();
 
-  const { entries, loading, error, refresh, addEntry, undoEntry } = useActivityLog();
+  const { entries, loading, error, refresh, addEntry, undoEntry, deleteEntry } =
+    useActivityLog();
 
   useEffect(() => {
     if (!window.dropzone?.isElectron) return;
@@ -79,12 +80,12 @@ export default function App() {
       root.classList.add('electron-ball-mode');
       document.title = '';
     } else {
-      root.classList.remove('electron-ball-mode');
+      root.classList.remove('electron-ball-mode', 'electron-ball-focused');
       if (window.dropzone?.isElectron) {
         document.title = 'AI Dropzone';
       }
     }
-    return () => root.classList.remove('electron-ball-mode');
+    return () => root.classList.remove('electron-ball-mode', 'electron-ball-focused');
   }, [shellMode]);
 
   async function handleAdoptRename(file: FileItem, newName: string, tags: string[]) {
@@ -197,7 +198,7 @@ export default function App() {
   }
 
   if (window.dropzone?.isElectron && shellMode === 'ball') {
-    return <BallShell onDropFiles={addFiles} />;
+    return <BallShell files={files} onDropFiles={addFiles} />;
   }
 
   return (
@@ -268,6 +269,7 @@ export default function App() {
             onBack={() => setView('home')}
             onRefresh={refresh}
             onUndo={handleUndo}
+            onDelete={deleteEntry}
           />
         )}
 

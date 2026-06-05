@@ -72,7 +72,8 @@ export function GlassShell({
                 aria-label="最小化"
                 title="最小化（折叠到悬浮球）"
                 onClick={() => {
-                  // Electron panel -> ball
+                  document.documentElement.classList.add('electron-ball-mode');
+                  document.documentElement.classList.remove('electron-ball-focused');
                   window.dropzone?.collapseToBall();
                 }}
               >

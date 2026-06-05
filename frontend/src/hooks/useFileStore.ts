@@ -173,13 +173,14 @@ export function useFileStore() {
         toParse.push({ file: row.file, id: item.id, sourcePath: row.sourcePath });
       }
 
-      if (newItems.length === 0) return;
+      if (newItems.length === 0) return [];
 
       setFiles(prev => [...newItems, ...prev]);
 
       for (const t of toParse) {
         void runParse(t.file, t.id, t.sourcePath);
       }
+      return newItems.map(item => item.id);
     },
     [runParse],
   );

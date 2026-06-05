@@ -86,6 +86,13 @@ export interface UndoResult {
   remaining_log_size: number;
 }
 
+export interface JournalDeleteResult {
+  status: OperationStatus;
+  deleted_count?: number;
+  requested_ids?: number[];
+  error?: string | null;
+}
+
 export interface ManifestEntry {
   original_path: string;
   name_in_package: string;

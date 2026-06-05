@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 export type ShellMode = 'ball' | 'panel';
+export type BallVisualPreset = 'idle' | 'capsule';
 
 contextBridge.exposeInMainWorld('dropzone', {
   isElectron: true,
@@ -22,6 +23,7 @@ contextBridge.exposeInMainWorld('dropzone', {
   getFileMetadataBatch: (paths: string[]) =>
     ipcRenderer.invoke('dropzone:getFileMetadataBatch', paths),
   getShellMode: () => ipcRenderer.invoke('window:getShellMode') as Promise<ShellMode>,
+  getShellModeSync: () => ipcRenderer.sendSync('window:getShellModeSync') as ShellMode,
   expandToPanel: () => {
     ipcRenderer.send('window:expandToPanel');
   },
@@ -56,11 +58,21 @@ contextBridge.exposeInMainWorld('dropzone', {
       width: number;
       height: number;
     } | null,
+  setBallVisualPreset: (preset: BallVisualPreset) => {
+    ipcRenderer.send('ball:setVisualPreset', preset);
+  },
   onShellModeChanged: (callback: (mode: ShellMode) => void) => {
     const handler = (_event: unknown, mode: ShellMode) => callback(mode);
     ipcRenderer.on('shell:modeChanged', handler);
     return () => {
       ipcRenderer.removeListener('shell:modeChanged', handler);
+    };
+  },
+  onWindowFocused: (callback: (focused: boolean) => void) => {
+    const handler = (_event: unknown, focused: boolean) => callback(focused);
+    ipcRenderer.on('shell:windowFocused', handler);
+    return () => {
+      ipcRenderer.removeListener('shell:windowFocused', handler);
     };
   },
 });

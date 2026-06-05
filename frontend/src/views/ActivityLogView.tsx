@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, Loader2, Package, Pencil, RotateCcw } from 'lucide-react';
+import { ChevronLeft, Loader2, Package, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import type { ActivityLogEntry } from '../types/activityLog';
 import { formatRelativeTime } from '../utils/formatTime';
 
@@ -11,6 +11,7 @@ interface Props {
   onBack: () => void;
   onRefresh: () => void;
   onUndo: (id: number) => Promise<{ ok: boolean; message?: string }>;
+  onDelete: (id: number) => Promise<{ ok: boolean; message?: string }>;
 }
 
 export function ActivityLogView({
@@ -20,10 +21,27 @@ export function ActivityLogView({
   onBack,
   onRefresh,
   onUndo,
+  onDelete,
 }: Props) {
   useEffect(() => {
     onRefresh();
   }, [onRefresh]);
+
+  async function handleDelete(id: number) {
+    const entry = entries.find(e => e.id === id);
+    if (
+      entry &&
+      !window.confirm(
+        `仅从日志中删除这条记录，不会恢复或改动磁盘上的文件。\n\n${entry.label}`,
+      )
+    ) {
+      return;
+    }
+    const result = await onDelete(id);
+    if (!result.ok) {
+      window.alert(result.message ?? '删除失败');
+    }
+  }
 
   async function handleUndo(id: number) {
     const entry = entries.find(e => e.id === id);
@@ -61,7 +79,9 @@ export function ActivityLogView({
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-bold text-slate-800">操作日志与回滚</h2>
-          <p className="text-[11px] text-slate-500">改名、导出记录；撤回将恢复磁盘状态</p>
+          <p className="text-[11px] text-slate-500">
+            撤回将恢复磁盘；删除仅从日志移除记录
+          </p>
         </div>
         <button
           type="button"
@@ -129,13 +149,23 @@ export function ActivityLogView({
                     <p className="mt-0.5 truncate text-[11px] text-slate-400">{entry.newPath}</p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleUndo(entry.id)}
-                  className="shrink-0 rounded-lg border border-slate-200/80 bg-white/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-white hover:text-blue-600"
-                >
-                  撤回
-                </button>
+                <div className="flex shrink-0 flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void handleUndo(entry.id)}
+                    className="rounded-lg border border-slate-200/80 bg-white/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-white hover:text-blue-600"
+                  >
+                    撤回
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(entry.id)}
+                    className="flex items-center justify-center gap-1 rounded-lg border border-red-100/80 bg-red-50/60 px-2.5 py-1.5 text-[11px] font-medium text-red-600/90 hover:bg-red-50 hover:text-red-700"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    删除
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

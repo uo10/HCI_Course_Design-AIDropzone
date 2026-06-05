@@ -1,4 +1,5 @@
 import {
+  deleteJournalEntries,
   exportPackages,
   getJournal,
   parseFile,
@@ -70,6 +71,10 @@ export function undo(req: UndoRequest): Promise<UndoResult> {
 
 export function fetchJournal(): Promise<RollbackEntryDto[]> {
   return getJournal();
+}
+
+export function deleteJournal(entryIds: number[]) {
+  return deleteJournalEntries(entryIds);
 }
 
 export function exportZip(req: ExportRequest): Promise<ExportResult> {

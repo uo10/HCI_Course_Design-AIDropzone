@@ -7,6 +7,7 @@ import type {
   RenameRequest,
   RenameResult,
   RollbackEntryDto,
+  JournalDeleteResult,
   UndoRequest,
   UndoResult,
 } from './types';
@@ -84,6 +85,15 @@ export function undoLast(filterOperation?: UndoRequest['filter_operation']): Pro
 
 export function getJournal(): Promise<RollbackEntryDto[]> {
   return get<RollbackEntryDto[]>('/journal');
+}
+
+/** 仅从 journal 移除记录，不撤回磁盘上的改名/导出 */
+export function deleteJournalEntries(entryIds: number[]): Promise<JournalDeleteResult> {
+  return request<JournalDeleteResult>(`${apiBase()}/journal`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entry_ids: entryIds }),
+  });
 }
 
 export function exportPackages(req: ExportRequest): Promise<ExportResult> {
