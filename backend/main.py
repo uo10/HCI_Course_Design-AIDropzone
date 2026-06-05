@@ -394,3 +394,29 @@ def route_get_journal() -> list:
         return _read_journal(_Path(__file__).resolve().parent / "rollback_log.json")
     except Exception as exc:
         return [{"error": str(exc)}]
+
+
+@app.delete("/journal", response_model=dict)
+def route_delete_journal_entries(body: dict) -> dict:
+    """Delete journal entries by ID without undoing any file operations.
+
+    Body: {"entry_ids": [1, 3, 5]}
+
+    The actual files remain in their current state — only the log
+    records are removed.  Use this for cleaning up the journal after
+    confirming that files are in the desired final location.
+    """
+    try:
+        entry_ids = body.get("entry_ids", [])
+        if not entry_ids:
+            return {"status": "failure", "error": "No entry_ids provided"}
+
+        from .modules.rollback import delete_entries
+        deleted = delete_entries(entry_ids)
+        return {
+            "status": "success",
+            "deleted_count": deleted,
+            "requested_ids": entry_ids,
+        }
+    except Exception as exc:
+        return {"status": "failure", "error": str(exc)}

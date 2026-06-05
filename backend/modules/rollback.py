@@ -203,3 +203,33 @@ def _undo_export(zip_path: str) -> None:
     target = Path(zip_path)
     if target.is_file():
         target.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Journal maintenance
+# ---------------------------------------------------------------------------
+
+def delete_entries(
+    entry_ids: list[int],
+    journal_path: Optional[Path] = None,
+) -> int:
+    """Remove journal entries by ID without undoing any operations.
+
+    Returns the number of entries actually deleted.
+    """
+    path = journal_path or _DEFAULT_JOURNAL
+    try:
+        entries = _read_journal(path)
+        if not entries:
+            return 0
+
+        id_set = set(entry_ids)
+        remaining = [e for e in entries if e.get("entry_id") not in id_set]
+        deleted = len(entries) - len(remaining)
+
+        if deleted:
+            _write_journal(path, remaining)
+
+        return deleted
+    except Exception:
+        return 0
