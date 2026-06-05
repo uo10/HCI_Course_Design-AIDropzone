@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..models.common import FileCategory, FileMetadata, OperationStatus
 from ..models.parser import ParseItem, ParseResult
+from ..utils.file_preview import read_text_preview
 
 
 # ======================================================================
@@ -313,6 +314,19 @@ def parse_file(
         summary = result["summary"]
         keywords = result["keywords"]
 
+        # ── Read file content for better analysis ──
+        content_preview = read_text_preview(Path(file_meta.path))
+        if content_preview:
+            # Extract extra keywords from content
+            content_extra = _extract_content_keywords(content_preview, tags, keywords)
+            if content_extra:
+                summary = summary.replace(
+                    "文件名未命中特定场景关键词",
+                    f"文件内容包含关键词 '{content_extra[0]}'",
+                )
+                # Boost confidence when content confirms filename hints
+                result["confidence"] = min(result["confidence"] + 0.06, 0.98)
+
         # Sensitive-file interception
         for kw in SENSITIVE_PATTERNS:
             if kw in file_meta.name_before_drop:
@@ -375,3 +389,48 @@ def _apply_prompt_keywords(prompt: str, tags: set[str], keywords: list[str]) -> 
                 tags.add(en)
             if en not in keywords:
                 keywords.append(en)
+
+
+def _extract_content_keywords(
+    content: str, tags: set[str], keywords: list[str]
+) -> list[str]:
+    """Scan file content for meaningful keywords and enrich tags/keywords."""
+    found: list[str] = []
+    patterns = {
+        "machine learning": "机器学习",
+        "deep learning": "深度学习",
+        "neural network": "神经网络",
+        "algorithm": "算法",
+        "experiment": "实验",
+        "dataset": "数据集",
+        "model": "模型",
+        "training": "训练",
+        "accuracy": "准确率",
+        "classification": "分类",
+        "regression": "回归",
+        "cluster": "聚类",
+        "python": "Python",
+        "javascript": "JavaScript",
+        "react": "React",
+        "database": "数据库",
+        "sql": "SQL",
+        "api": "API",
+        "docker": "Docker",
+        "git": "Git",
+        "test": "测试",
+        "report": "报告",
+        "budget": "预算",
+        "invoice": "发票",
+        "salary": "工资",
+        "contract": "合同",
+    }
+    content_low = content.lower()
+    for en_key, cn_label in patterns.items():
+        if en_key in content_low:
+            tag_name = en_key.replace(" ", "_")
+            if tag_name not in tags:
+                tags.add(tag_name)
+            if cn_label not in keywords:
+                keywords.append(cn_label)
+            found.append(cn_label)
+    return found

@@ -21,6 +21,7 @@ import httpx
 from ..models.common import FileCategory, FileMetadata, OperationStatus
 from ..models.parser import ParseItem, ParseResult
 from ..utils.config import load_config
+from ..utils.file_preview import read_text_preview
 
 # ---------------------------------------------------------------------------
 # Prompt template
@@ -28,29 +29,32 @@ from ..utils.config import load_config
 
 SYSTEM_PROMPT = """You are an AI file classifier for a desktop file-organisation tool called "AI Dropzone".
 
-Analyse the file based on its FILENAME, EXTENSION and SIZE (you cannot read the actual file content in this version).
+You will receive the file's FILENAME, EXTENSION, SIZE, and for text-based files, a preview of the ACTUAL FILE CONTENT. Use the content when available to make better decisions.
 
 Return ONLY a JSON object (no markdown, no backticks) with these exact keys:
 - "category": one of [document, image, video, audio, archive, code, spreadsheet, presentation, pdf, unknown]
 - "tags": array of 2-3 lowercase English tags (e.g. ["coursework","assignment"])
-- "summary": a chain-of-thought analysis in Chinese, 1-2 sentences, explaining your reasoning
-- "keywords": array of 1-3 key terms extracted from the filename
-- "confidence": number between 0.0 and 1.0
+- "summary": a chain-of-thought analysis in Chinese, 1-2 sentences, explaining your reasoning based on filename AND content
+- "keywords": array of 1-3 key terms extracted from the content
+- "confidence": number between 0.0 and 1.0 (higher when content confirms filename hints)
 - "suggested_name": a clean English filename suggestion (keep original extension), format: category_date_originalstem.ext
 
 Rules:
-- If the filename contains Chinese academic keywords (作业/实验/报告/论文/课程) → category depends on extension, add "coursework" tag
+- READ THE FILE CONTENT PREVIEW when provided — it's the most reliable signal
+- If content is available: base your category/tags/summary primarily on the content, using the filename as supplementary context
+- If the filename contains Chinese academic keywords (作业/实验/报告/论文/课程) → consider adding "coursework" tag
 - If it contains career keywords (简历/求职/CV/resume/portfolio) → add "job" and "career" tags
 - If it contains finance keywords (银行/工资/发票/报销/税/tax/invoice) → add "finance" and "proof" tags
 - Images (jpg/png/gif/webp) → category "image", tags ["image","media"]
 - PDF → category "pdf"
-- Be creative but reasonable with the summary — write as if you really analysed the file content.
+- Write the summary as if you have really analysed the file content.
 """
 
 USER_PROMPT_TEMPLATE = """File: {name_before_drop}
 Extension: {extension}
 Size: {size_kb:.0f} KB
 Path: {path}
+{content_block}
 
 Analyse this file and return the JSON."""
 
@@ -230,6 +234,16 @@ def parse_file(
         if extra_prompt:
             system += f"\n\nADDITIONAL REQUEST FOR THIS FILE: {extra_prompt}"
 
+        # Read file content preview (for text-based files)
+        content_preview = read_text_preview(Path(file_meta.path))
+        content_block = ""
+        if content_preview:
+            content_block = (
+                "--- FILE CONTENT PREVIEW (first chars) ---\n"
+                f"{content_preview}\n"
+                "--- END CONTENT ---"
+            )
+
         # Build user prompt
         size_kb = file_meta.size_bytes / 1024
         user = USER_PROMPT_TEMPLATE.format(
@@ -237,6 +251,7 @@ def parse_file(
             extension=file_meta.extension,
             size_kb=size_kb,
             path=file_meta.path,
+            content_block=content_block,
         )
 
         # Call the appropriate provider
