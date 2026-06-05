@@ -33,6 +33,13 @@ export interface ParseResult {
   error: string | null;
 }
 
+export interface RegenerateRequest {
+  file: FileMetadata;
+  extra_prompt?: string;
+  context_tags?: string[];
+  prefer_mock?: boolean;
+}
+
 export interface RenameItem {
   source_path: string;
   new_name: string;

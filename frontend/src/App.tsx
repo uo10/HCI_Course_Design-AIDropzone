@@ -52,6 +52,7 @@ export default function App() {
     setSelectedFileId,
     addFiles,
     updateFile,
+    regenerateFile,
     removeSelection,
     removeFile,
     syncAfterUndoRename,
@@ -247,6 +248,9 @@ export default function App() {
                       file={selectedFile}
                       onClose={removeSelection}
                       onAdoptRename={handleAdoptRename}
+                      onRegenerate={(extraPrompt, contextTags) =>
+                        regenerateFile(selectedFile.id, extraPrompt, contextTags)
+                      }
                     />
                   )}
                 </AnimatePresence>

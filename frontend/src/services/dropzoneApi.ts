@@ -2,6 +2,7 @@ import {
   exportPackages,
   getJournal,
   parseFile,
+  regenerateParse,
   renameFiles,
   undoOperation,
 } from '../api/client';
@@ -44,6 +45,19 @@ export function getApiBase(): string {
 
 export function parseOne(file: FileMetadata, preferMock = isMockMode()): Promise<ParseResult> {
   return parseFile(file, preferMock);
+}
+
+export function regenerateOne(
+  file: FileMetadata,
+  extraPrompt: string,
+  contextTags?: string[],
+): Promise<ParseResult> {
+  return regenerateParse({
+    file,
+    extra_prompt: extraPrompt,
+    context_tags: contextTags?.length ? contextTags : undefined,
+    prefer_mock: false,
+  });
 }
 
 export function rename(req: RenameRequest): Promise<RenameResult> {

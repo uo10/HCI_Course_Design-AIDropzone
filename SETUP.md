@@ -193,6 +193,8 @@ mkdir D:\HCI_teamwork\HCI_Course_Design-AIDropzone\backend\workspace
 
 ## 7. 新手推荐：完整功能全流程（两个 CMD 窗口）
 
+**一键启动（Windows）**：双击项目根目录 [`start-dev.bat`](./start-dev.bat)，会自动打开两个 CMD 窗口（后端 + `electron:dev:full`），无需手抄命令。
+
 你已经跑通的话，可按此清单自检；第一次建议严格按顺序做。
 
 ### 窗口 1 — 启动后端（保持运行，不要关）

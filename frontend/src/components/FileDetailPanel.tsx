@@ -9,25 +9,39 @@ import {
   Shield,
   Lock,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import type { FileItem } from '../types/fileItem';
 import { isMockMode } from '../services/dropzoneApi';
 import { FileIcon } from '../utils/fileIcon';
+import { normalizeUserTag, normalizeUserTagMessage } from '../utils/normalizeUserTag';
+import { CategoryReasonBlock } from './CategoryReasonBlock';
 import { TagChip } from './TagChip';
 
 interface Props {
   file: FileItem;
   onClose: () => void;
   onAdoptRename?: (file: FileItem, newName: string, tags: string[]) => Promise<void>;
+  onRegenerate?: (extraPrompt: string, contextTags: string[]) => Promise<void>;
 }
 
-export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
+export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [editedName, setEditedName] = useState(file.suggestedName);
   const [editedTags, setEditedTags] = useState<string[]>([...file.tags]);
   const [tagInput, setTagInput] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [extraPrompt, setExtraPrompt] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+
+  const canRegenerate =
+    !isMockMode() &&
+    Boolean(file.sourcePath) &&
+    file.status === 'processed' &&
+    Boolean(file.parseMetadata) &&
+    Boolean(onRegenerate);
 
   useEffect(() => {
     setEditedName(file.suggestedName);
@@ -39,17 +53,48 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
 
   useEffect(() => {
     setAdopting(false);
+    setRegenOpen(false);
+    setExtraPrompt('');
+    setRegenerating(false);
   }, [file.id]);
 
   function addTag() {
-    const t = tagInput.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    if (t && !editedTags.includes(t)) setEditedTags(prev => [...prev, t]);
+    const result = normalizeUserTag(tagInput);
+    if (!result.ok) {
+      if (tagInput.trim()) {
+        showToast(normalizeUserTagMessage(result.reason));
+      }
+      setTagInput('');
+      return;
+    }
+    if (!editedTags.includes(result.tag)) {
+      setEditedTags(prev => [...prev, result.tag]);
+    }
     setTagInput('');
   }
 
   function showToast(msg: string) {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2800);
+  }
+
+  async function handleRegenerateSubmit() {
+    if (!onRegenerate) {
+      showToast('重新生成未初始化，请刷新应用重试');
+      return;
+    }
+    setRegenerating(true);
+    showToast('正在重新生成…');
+    try {
+      await onRegenerate(extraPrompt, editedTags);
+      setRegenOpen(false);
+      setExtraPrompt('');
+      showToast('已更新命名建议');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '重新生成失败');
+    } finally {
+      setRegenerating(false);
+    }
   }
 
   async function handleAdopt() {
@@ -192,7 +237,10 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
           <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
           <div>
             <p className="text-xs font-semibold text-emerald-800/80">建议原因</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{file.categoryReason}</p>
+            <CategoryReasonBlock
+              summary={file.categoryReason}
+              lastExtraPrompt={file.lastExtraPrompt}
+            />
           </div>
         </div>
       </div>
@@ -203,10 +251,60 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 border-t border-white/40 p-4">
+      {regenOpen && (
+        <div className="border-t border-white/40 px-4 py-3">
+          <p className="mb-1.5 text-xs font-semibold text-slate-600">本次补充说明（可选）</p>
+          <textarea
+            value={extraPrompt}
+            onChange={e => setExtraPrompt(e.target.value)}
+            placeholder="例如：强调算法名、突出实验版本"
+            maxLength={500}
+            rows={3}
+            disabled={regenerating}
+            className="w-full resize-y rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 disabled:opacity-60"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={regenerating}
+              onClick={() => void handleRegenerateSubmit()}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-violet-600 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${regenerating ? 'animate-spin' : ''}`} />
+              {regenerating ? '生成中…' : '开始生成'}
+            </button>
+            <button
+              type="button"
+              disabled={regenerating}
+              onClick={() => setRegenOpen(false)}
+              className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs text-slate-600 hover:bg-white disabled:opacity-60"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-2 border-t border-white/40 p-4">
         <button
           type="button"
-          disabled={adopting}
+          disabled={!canRegenerate || adopting || regenerating || regenOpen}
+          title={
+            isMockMode()
+              ? '关闭 Mock 并使用 electron:dev:full 后可重生成'
+              : !file.parseMetadata
+                ? '请重新拖入该文件'
+                : undefined
+          }
+          onClick={() => setRegenOpen(true)}
+          className="flex items-center justify-center gap-1 rounded-xl border border-violet-200/80 bg-violet-50/90 py-2.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          重新生成
+        </button>
+        <button
+          type="button"
+          disabled={adopting || regenerating}
           onClick={() => void handleAdopt()}
           className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-60"
         >
@@ -215,11 +313,12 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
         </button>
         <button
           type="button"
+          disabled={regenerating}
           onClick={onClose}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 py-2.5 text-xs font-medium text-slate-600 hover:bg-white"
+          className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 py-2.5 text-xs font-medium text-slate-600 hover:bg-white disabled:opacity-60"
         >
           <Ban className="h-3.5 w-3.5" />
-          忽略建议
+          忽略
         </button>
       </div>
 

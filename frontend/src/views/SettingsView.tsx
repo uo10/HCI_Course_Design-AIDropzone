@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, FolderOpen, KeyRound, RefreshCw, Save, Server } from 'lucide-react';
+import { ChevronLeft, FolderOpen, KeyRound, RefreshCw, Save, Server, Sparkles } from 'lucide-react';
 import { getBackendConfig, putBackendConfig } from '../api/client';
 import {
   getApiBase,
@@ -36,6 +36,7 @@ export function SettingsView({ onBack }: Props) {
   const [useMock, setUseMock] = useState(() => isMockMode());
   const [aiParser, setAiParser] = useState<'mock' | 'llm'>('mock');
   const [deepseekKey, setDeepseekKey] = useState('');
+  const [namingStylePrompt, setNamingStylePrompt] = useState('');
   const [keyHint, setKeyHint] = useState('');
   const [configError, setConfigError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -49,6 +50,9 @@ export function SettingsView({ onBack }: Props) {
         if (cancelled) return;
         const cfg = res.config;
         if (cfg.workspace_root) setWorkspace(cfg.workspace_root);
+        if (typeof cfg.naming_style_prompt === 'string') {
+          setNamingStylePrompt(cfg.naming_style_prompt);
+        }
         if (cfg.ai_parser === 'llm' || cfg.ai_parser === 'mock') {
           setAiParser(cfg.ai_parser);
         }
@@ -101,6 +105,7 @@ export function SettingsView({ onBack }: Props) {
           const body: Parameters<typeof putBackendConfig>[0] = {
             workspace_root: workspace.trim() || undefined,
             ai_parser: aiParser,
+            naming_style_prompt: namingStylePrompt,
           };
           if (deepseekKey.trim()) {
             body.llm_api_key = deepseekKey.trim();
@@ -235,6 +240,22 @@ export function SettingsView({ onBack }: Props) {
             在 platform.deepseek.com 创建密钥。关闭 Mock 且启动 uvicorn 后，保存会写入后端配置。
           </p>
         )}
+
+        <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+          <Sparkles className="h-3.5 w-3.5" />
+          命名风格提示词（常驻）
+        </label>
+        <textarea
+          value={namingStylePrompt}
+          onChange={e => setNamingStylePrompt(e.target.value)}
+          placeholder="例如：偏学术、保留英文缩写、文件名不超过 25 字符"
+          maxLength={500}
+          rows={3}
+          className="mb-1 w-full resize-y rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+        />
+        <p className="mb-4 text-[11px] text-slate-400">
+          保存后写入后端 config，每次解析与重新生成都会自动带上（关闭 Mock 且已启动 uvicorn 时生效）。
+        </p>
 
         <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
           <FolderOpen className="h-3.5 w-3.5" />

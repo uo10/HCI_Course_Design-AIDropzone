@@ -280,6 +280,7 @@ function applyBallMode(): void {
   mainWindow.setBounds({ x, y, width: BALL_SIZE, height: BALL_SIZE });
   /** 小球窗口关闭阴影，减轻 Windows 下拖动时外缘「方框/描边」视觉异常 */
   mainWindow.setHasShadow(false);
+  mainWindow.setAlwaysOnTop(true);
   notifyShellMode('ball');
 }
 
@@ -308,6 +309,7 @@ function applyPanelMode(): void {
     clampBoundsToWorkArea({ x, y, width, height }, wa),
   );
   mainWindow.setHasShadow(true);
+  mainWindow.setAlwaysOnTop(false);
   notifyShellMode('panel');
 }
 
@@ -324,7 +326,7 @@ function createWindow(): void {
     maxHeight: startPanel ? undefined : BALL_SIZE,
     resizable: startPanel,
     frame: false,
-    alwaysOnTop: true,
+    alwaysOnTop: !startPanel,
     /** 透明 + Win11 圆角：底色只由网页在圆角矩形内绘制，禁止原生方形铺色 */
     transparent: true,
     backgroundColor: '#00000000',

@@ -6,6 +6,14 @@ import type { ActivityLogEntry, LogOperation } from '../types/activityLog';
 const MOCK_STORAGE_KEY = 'aidropzone.mock_journal';
 let mockNextId = 1;
 
+function sortNewestFirst(entries: ActivityLogEntry[]): ActivityLogEntry[] {
+  return [...entries].sort((a, b) => {
+    const t = b.timestamp.getTime() - a.timestamp.getTime();
+    if (t !== 0) return t;
+    return b.id - a.id;
+  });
+}
+
 function loadMockEntries(): ActivityLogEntry[] {
   try {
     const raw = localStorage.getItem(MOCK_STORAGE_KEY);
@@ -14,7 +22,7 @@ function loadMockEntries(): ActivityLogEntry[] {
     const entries = parsed.map(e => ({ ...e, timestamp: new Date(e.timestamp) }));
     const maxId = entries.reduce((m, e) => Math.max(m, e.id), 0);
     mockNextId = maxId + 1;
-    return entries;
+    return sortNewestFirst(entries);
   } catch {
     return [];
   }
@@ -70,7 +78,7 @@ export function useActivityLog() {
     setError(null);
     try {
       const raw = await fetchJournal();
-      setEntries(raw.map(dtoToEntry));
+      setEntries(sortNewestFirst(raw.map(dtoToEntry)));
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载日志失败');
     } finally {
@@ -95,7 +103,7 @@ export function useActivityLog() {
           label: payload.label,
         };
         setEntries(prev => {
-          const next = [entry, ...prev];
+          const next = sortNewestFirst([entry, ...prev]);
           saveMockEntries(next);
           return next;
         });

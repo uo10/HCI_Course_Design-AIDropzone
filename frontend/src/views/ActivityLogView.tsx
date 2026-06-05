@@ -50,7 +50,7 @@ export function ActivityLogView({
       exit={{ opacity: 0, y: 6 }}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex items-center gap-2 border-b border-white/40 px-4 py-3">
+      <div className="electron-no-drag flex items-center gap-2 border-b border-white/40 px-4 py-3">
         <button
           type="button"
           onClick={onBack}
@@ -73,7 +73,7 @@ export function ActivityLogView({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="electron-no-drag min-h-0 flex-1 overflow-y-auto p-4">
         {loading && (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" />

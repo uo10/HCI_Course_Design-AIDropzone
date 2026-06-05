@@ -3,6 +3,7 @@ import type {
   ExportResult,
   FileMetadata,
   ParseResult,
+  RegenerateRequest,
   RenameRequest,
   RenameResult,
   RollbackEntryDto,
@@ -52,6 +53,15 @@ export function parseFile(file: FileMetadata, preferMock = false): Promise<Parse
   return post<ParseResult>('/parse', { file, prefer_mock: preferMock });
 }
 
+export function regenerateParse(req: RegenerateRequest): Promise<ParseResult> {
+  return post<ParseResult>('/parse/regenerate', {
+    file: req.file,
+    extra_prompt: req.extra_prompt ?? '',
+    context_tags: req.context_tags,
+    prefer_mock: req.prefer_mock ?? false,
+  });
+}
+
 export function renameFiles(req: RenameRequest): Promise<RenameResult> {
   return post<RenameResult>('/rename', req);
 }
@@ -82,6 +92,7 @@ export function exportPackages(req: ExportRequest): Promise<ExportResult> {
 
 export interface BackendConfigPayload {
   workspace_root?: string;
+  naming_style_prompt?: string;
   ai_parser?: 'mock' | 'llm';
   ai_parser_options?: {
     llm?: {
@@ -97,6 +108,7 @@ export interface BackendConfigPayload {
 export interface ConfigUpdatePayload {
   ai_parser?: 'mock' | 'llm';
   workspace_root?: string;
+  naming_style_prompt?: string;
   llm_provider?: string;
   llm_model?: string;
   llm_base_url?: string;

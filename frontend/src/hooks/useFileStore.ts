@@ -7,7 +7,7 @@ import {
   mockParseFromFile,
   MOCK_PARSE_DELAY_MS,
 } from '../mock/mockParse';
-import { isMockMode, parseOne } from '../services/dropzoneApi';
+import { isMockMode, parseOne, regenerateOne } from '../services/dropzoneApi';
 import type { FileItem } from '../types/fileItem';
 import { formatApiError, isNetworkFetchError } from '../utils/apiErrors';
 import { resolveDroppedFilePath } from '../utils/electronPath';
@@ -52,12 +52,15 @@ export function useFileStore() {
     if (useMock) {
       await delay(MOCK_PARSE_DELAY_MS);
       const parsed = mockParseFromFile(file);
+      const mockMeta =
+        sourcePath.trim() ? metadataFromDroppedFile(file, sourcePath) : undefined;
       setFiles(prev =>
         prev.map(f =>
           f.id === itemId
             ? {
                 ...f,
                 ...parsed,
+                parseMetadata: mockMeta,
                 status: 'processed' as const,
                 parseError: undefined,
               }
@@ -100,6 +103,8 @@ export function useFileStore() {
                 categoryReason: data.summary,
                 extension: extOf(metadata.name_before_drop),
                 sensitive,
+                parseMetadata: metadata,
+                lastExtraPrompt: undefined,
                 status: 'processed' as const,
                 parseError: undefined,
               }
@@ -110,6 +115,7 @@ export function useFileStore() {
     } catch (err) {
       if (isNetworkFetchError(err) && sourcePath.trim()) {
         const parsed = mockParseFromFile(file, sourcePath);
+        const fallbackMeta = metadataFromDroppedFile(file, sourcePath);
         setFiles(prev =>
           prev.map(f =>
             f.id === itemId
@@ -117,6 +123,7 @@ export function useFileStore() {
                   ...f,
                   ...parsed,
                   sourcePath: sourcePath.trim(),
+                  parseMetadata: fallbackMeta,
                   status: 'processed' as const,
                   parseError: undefined,
                   categoryReason:
@@ -181,6 +188,47 @@ export function useFileStore() {
     setFiles(prev => prev.map(f => (f.id === id ? { ...f, ...patch } : f)));
   }, []);
 
+  const regenerateFile = useCallback(
+    async (fileId: string, extraPrompt: string, contextTags: string[]) => {
+      if (isMockMode() || !canResolvePath()) {
+        throw new Error('重新生成需要关闭 Mock 并使用 electron:dev:full 连接本地后端。');
+      }
+
+      const item = filesRef.current.find(f => f.id === fileId);
+      if (!item?.parseMetadata) {
+        throw new Error('缺少文件元数据，请重新拖入该文件后再试。');
+      }
+
+      const result = await regenerateOne(
+        item.parseMetadata,
+        extraPrompt.trim(),
+        contextTags,
+      );
+      if (result.status !== 'success' || !result.data) {
+        throw new Error(result.error ?? '重新生成失败');
+      }
+
+      const data = result.data;
+      const sensitive = data.tags.includes('sensitive');
+      setFiles(prev =>
+        prev.map(f =>
+          f.id === fileId
+            ? {
+                ...f,
+                suggestedName: data.suggested_name,
+                categoryReason: data.summary,
+                lastExtraPrompt: extraPrompt.trim() || undefined,
+                sensitive,
+                parseError: undefined,
+              }
+            : f,
+        ),
+      );
+      flashJustCompleted(fileId, setFiles);
+    },
+    [],
+  );
+
   const removeSelection = useCallback(() => setSelectedFileId(null), []);
 
   const removeFile = useCallback((id: string) => {
@@ -215,6 +263,7 @@ export function useFileStore() {
     setSelectedFileId,
     addFiles,
     updateFile,
+    regenerateFile,
     removeSelection,
     removeFile,
     syncAfterUndoRename,
