@@ -62,11 +62,18 @@ def route_parse(body: ParseRequest) -> ParseResult:
     parser = _get_parser()
     result = parser(body.file, style_prompt=style)
 
+    # If LLM failed, fall back to Mock but keep the error for transparency
     if result.status == "failure" and not body.prefer_mock:
         cfg = load_config()
         if cfg.get("ai_parser") == "llm":
+            llm_error = result.error
             from .modules.mock_ai_parser import parse_file as mock_parse
             result = mock_parse(body.file, style_prompt=style)
+            # Surface the LLM error so the frontend can warn the user
+            if result.status == "success" and result.data:
+                result.data.summary += (
+                    f" | [LLM调用失败，已降级Mock: {llm_error[:60]}]"
+                )
 
     return result
 
@@ -89,8 +96,13 @@ def route_parse_regenerate(body: RegenerateRequest) -> ParseResult:
     result = parser(body.file, style_prompt=style, extra_prompt=extra)
 
     if result.status == "failure":
+        llm_error = result.error
         from .modules.mock_ai_parser import parse_file as mock_parse
         result = mock_parse(body.file, style_prompt=style, extra_prompt=extra)
+        if result.status == "success" and result.data:
+            result.data.summary += (
+                f" | [LLM调用失败，已降级Mock: {llm_error[:60]}]"
+            )
 
     return result
 

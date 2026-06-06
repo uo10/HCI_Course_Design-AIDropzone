@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,25 @@ from ..models.common import FileCategory, FileMetadata, OperationStatus
 from ..models.parser import ParseItem, ParseResult
 from ..utils.config import load_config
 from ..utils.file_preview import read_text_preview
+
+
+# ---------------------------------------------------------------------------
+# API key resolution
+# ---------------------------------------------------------------------------
+
+def _resolve_api_key(cfg: dict) -> str:
+    """Return the effective API key.
+
+    1. cfg["api_key"] — plain-text key (from settings form)
+    2. cfg["api_key_env"] — if set, read from that environment variable
+    """
+    plain = cfg.get("api_key", "")
+    if plain:
+        return plain
+    env_name = cfg.get("api_key_env", "")
+    if env_name:
+        return os.environ.get(env_name, "")
+    return ""
 
 # ---------------------------------------------------------------------------
 # Prompt template
@@ -66,11 +86,12 @@ def _call_openai_compatible(cfg: dict, system: str, user: str, timeout: int) -> 
     """Call OpenAI / DeepSeek chat/completions endpoint."""
     base_url = cfg.get("base_url", "https://api.openai.com/v1").rstrip("/")
     if not base_url.endswith("/chat/completions"):
-        if "/v1" in base_url:
-            base_url = base_url.split("/v1")[0] + "/v1"
+        # Ensure /v1 prefix for OpenAI-compatible APIs (DeepSeek needs this)
+        if "/v1" not in base_url:
+            base_url = base_url.rstrip("/") + "/v1"
         base_url = base_url + "/chat/completions"
 
-    api_key = cfg.get("api_key", "") or cfg.get("api_key_env", "")
+    api_key = _resolve_api_key(cfg)
     model = cfg.get("model", "gpt-3.5-turbo")
 
     headers = {
@@ -100,7 +121,7 @@ def _call_anthropic(cfg: dict, system: str, user: str, timeout: int) -> str:
     if not base_url.endswith("/v1/messages"):
         base_url = base_url.rstrip("/") + "/v1/messages"
 
-    api_key = cfg.get("api_key", "") or cfg.get("api_key_env", "")
+    api_key = _resolve_api_key(cfg)
     model = cfg.get("model", "claude-sonnet-4-6")
 
     headers = {
