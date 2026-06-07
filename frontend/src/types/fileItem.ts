@@ -1,4 +1,4 @@
-import type { FileMetadata } from '../api/types';
+import type { FileCategory, FileMetadata } from '../api/types';
 
 export type FileStatus = 'parsing' | 'processed' | 'error';
 
@@ -21,6 +21,8 @@ export interface FileItem {
   parseError?: string;
   /** 首次 /parse 成功时的元数据快照，供 /parse/regenerate 使用 */
   parseMetadata?: FileMetadata;
+  /** 后端解析返回的文件类别（LLM/Mock 均有） */
+  parseCategory?: FileCategory;
   /** 最近一次重新生成时填写的单次说明（用于建议原因展示） */
   lastExtraPrompt?: string;
 }

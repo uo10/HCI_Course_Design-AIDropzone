@@ -19,6 +19,7 @@ import { CategoryReasonBlock } from './CategoryReasonBlock';
 import { TagChip } from './TagChip';
 import { ThinkingPlaceholder } from './ThinkingPlaceholder';
 import { TypewriterText } from './TypewriterText';
+import { useNamingStylePrompt } from '../hooks/useNamingStylePrompt';
 import { useTypewriter } from '../hooks/useTypewriter';
 
 interface Props {
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: Props) {
+  const namingStylePrompt = useNamingStylePrompt();
   const inputRef = useRef<HTMLInputElement>(null);
   const [editedName, setEditedName] = useState(file.suggestedName);
   const [editedTags, setEditedTags] = useState<string[]>([...file.tags]);
@@ -278,6 +280,10 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
             <CategoryReasonBlock
               summary={file.categoryReason}
               lastExtraPrompt={file.lastExtraPrompt}
+              persistentStylePrompt={namingStylePrompt}
+              parseCategory={file.parseCategory}
+              fileSizeBytes={file.parseMetadata?.size_bytes}
+              extension={file.extension}
               waiting={isWaitingSuggestion}
               animateReveal={animateSuggestion && !isWaitingSuggestion}
               revealKey={`${file.id}:${revealKey}`}

@@ -109,6 +109,7 @@ export interface BackendConfigPayload {
       provider?: string;
       model?: string;
       base_url?: string;
+      api_key_env?: string;
       api_key?: string;
       api_key_set?: boolean;
     };

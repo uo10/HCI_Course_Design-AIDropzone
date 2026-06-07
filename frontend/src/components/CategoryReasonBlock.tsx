@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
+import type { FileCategory } from '../api/types';
 import { parseCategoryReason } from '../utils/formatCategoryReason';
 import { ThinkingPlaceholder } from './ThinkingPlaceholder';
 
@@ -19,6 +20,11 @@ const lineVariants = {
 interface Props {
   summary: string;
   lastExtraPrompt?: string;
+  /** config 常驻风格；LLM 响应 summary 里通常不含「风格要求:」 */
+  persistentStylePrompt?: string;
+  parseCategory?: FileCategory;
+  fileSizeBytes?: number;
+  extension?: string;
   /** 为 true 时逐行淡入；false 时静态展示 */
   animateReveal?: boolean;
   /** 变化时重新播放淡入 */
@@ -30,12 +36,20 @@ interface Props {
 export function CategoryReasonBlock({
   summary,
   lastExtraPrompt,
+  persistentStylePrompt,
+  parseCategory,
+  fileSizeBytes,
+  extension,
   animateReveal = false,
   revealKey = '',
   waiting = false,
 }: Props) {
   const reducedMotion = usePrefersReducedMotion();
-  const lines = parseCategoryReason(summary, lastExtraPrompt);
+  const lines = parseCategoryReason(summary, lastExtraPrompt, persistentStylePrompt, {
+    parseCategory,
+    fileSizeBytes,
+    extension,
+  });
   const shouldAnimate = animateReveal && !reducedMotion && !waiting && lines.length > 0;
 
   if (waiting) {

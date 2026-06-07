@@ -11,6 +11,29 @@ import { validateLocalApiBase } from '../utils/apiErrors';
 
 const STORAGE_WORKSPACE = 'aidropzone.workspace';
 const STORAGE_LLM_KEY = 'aidropzone.llm_api_key';
+const STORAGE_NAMING_STYLE = 'aidropzone.naming_style_prompt';
+
+/** 与 PUT /config 及 backend config.json 中 DeepSeek 段对齐 */
+const DEEPSEEK_LLM = {
+  provider: 'deepseek',
+  model: 'deepseek-chat',
+  baseUrl: 'https://api.deepseek.com/v1',
+} as const;
+
+function hasAnyLlmKey(deepseekKey: string, keyHint: string): boolean {
+  return Boolean(
+    deepseekKey.trim() ||
+      keyHint ||
+      localStorage.getItem(STORAGE_LLM_KEY)?.trim(),
+  );
+}
+
+function resolveLlmApiKeyForSave(deepseekKey: string): string | undefined {
+  const typed = deepseekKey.trim();
+  if (typed) return typed;
+  const cached = localStorage.getItem(STORAGE_LLM_KEY)?.trim();
+  return cached || undefined;
+}
 
 function isMissingConfigEndpointError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
@@ -36,7 +59,9 @@ export function SettingsView({ onBack }: Props) {
   const [useMock, setUseMock] = useState(() => isMockMode());
   const [aiParser, setAiParser] = useState<'mock' | 'llm'>('mock');
   const [deepseekKey, setDeepseekKey] = useState('');
-  const [namingStylePrompt, setNamingStylePrompt] = useState('');
+  const [namingStylePrompt, setNamingStylePrompt] = useState(
+    () => localStorage.getItem(STORAGE_NAMING_STYLE) ?? '',
+  );
   const [keyHint, setKeyHint] = useState('');
   const [configError, setConfigError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -52,13 +77,22 @@ export function SettingsView({ onBack }: Props) {
         if (cfg.workspace_root) setWorkspace(cfg.workspace_root);
         if (typeof cfg.naming_style_prompt === 'string') {
           setNamingStylePrompt(cfg.naming_style_prompt);
+          localStorage.setItem(STORAGE_NAMING_STYLE, cfg.naming_style_prompt);
         }
         if (cfg.ai_parser === 'llm' || cfg.ai_parser === 'mock') {
           setAiParser(cfg.ai_parser);
         }
         const llm = cfg.ai_parser_options?.llm;
         if (llm?.api_key_set && llm.api_key) {
-          setKeyHint(`已保存：${llm.api_key}`);
+          const vendor =
+            llm.provider === DEEPSEEK_LLM.provider
+              ? 'DeepSeek'
+              : llm.provider || 'LLM';
+          setKeyHint(`已配置 ${vendor} · ${llm.api_key}`);
+        } else if (cfg.ai_parser === 'llm' && llm?.provider !== DEEPSEEK_LLM.provider) {
+          setKeyHint(
+            `当前解析引擎为 ${llm?.provider || '未知'}，点击保存将切换为 DeepSeek`,
+          );
         }
       })
       .catch(() => {
@@ -84,7 +118,7 @@ export function SettingsView({ onBack }: Props) {
       }
     }
 
-    if (aiParser === 'llm' && !deepseekKey.trim() && !keyHint && !localStorage.getItem(STORAGE_LLM_KEY)) {
+    if (!useMock && aiParser === 'llm' && !hasAnyLlmKey(deepseekKey, keyHint)) {
       setConfigError('已选择 DeepSeek 大模型，请填写 API Key 后再保存。');
       return;
     }
@@ -93,6 +127,7 @@ export function SettingsView({ onBack }: Props) {
     try {
       localStorage.setItem(STORAGE_WORKSPACE, workspace.trim());
       localStorage.setItem('aidropzone.api_base', apiBase.trim());
+      localStorage.setItem(STORAGE_NAMING_STYLE, namingStylePrompt);
       setMockModeOverride(useMock);
 
       if (deepseekKey.trim()) {
@@ -107,14 +142,22 @@ export function SettingsView({ onBack }: Props) {
             ai_parser: aiParser,
             naming_style_prompt: namingStylePrompt,
           };
-          if (deepseekKey.trim()) {
-            body.llm_api_key = deepseekKey.trim();
+          if (aiParser === 'llm') {
+            body.llm_provider = DEEPSEEK_LLM.provider;
+            body.llm_model = DEEPSEEK_LLM.model;
+            body.llm_base_url = DEEPSEEK_LLM.baseUrl;
+            const apiKey = resolveLlmApiKeyForSave(deepseekKey);
+            if (apiKey) {
+              body.llm_api_key = apiKey;
+            }
           }
           const res = await putBackendConfig(body);
           backendOk = true;
           const llm = res.config.ai_parser_options?.llm;
           if (llm?.api_key_set && llm.api_key) {
-            setKeyHint(`已保存：${llm.api_key}`);
+            setKeyHint(`已配置 DeepSeek · ${llm.api_key}`);
+          } else if (aiParser === 'llm' && llm?.provider === DEEPSEEK_LLM.provider) {
+            setKeyHint('已切换为 DeepSeek；请填写 API Key 后再次保存');
           }
           setDeepseekKey('');
         } catch (e) {
@@ -237,7 +280,8 @@ export function SettingsView({ onBack }: Props) {
           <p className="mb-4 text-[11px] text-emerald-700">{keyHint}</p>
         ) : (
           <p className="mb-4 text-[11px] text-slate-400">
-            在 platform.deepseek.com 创建密钥。关闭 Mock 且启动 uvicorn 后，保存会写入后端配置。
+            在 platform.deepseek.com 创建密钥。保存时会同步写入后端 config.json（含 DeepSeek
+            provider / model / base_url），与拖文件解析使用同一套 API。
           </p>
         )}
 
