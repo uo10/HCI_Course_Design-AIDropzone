@@ -59,15 +59,16 @@ Return ONLY a JSON object (no markdown, no backticks) with these exact keys:
 - "confidence": number between 0.0 and 1.0 (higher when content confirms filename hints)
 - "suggested_name": a clean English filename suggestion (keep original extension), format: category_date_originalstem.ext
 
-Rules:
+Rules (these are DEFAULTS — user style/extra overrides below take precedence):
 - READ THE FILE CONTENT PREVIEW when provided — it's the most reliable signal
-- If content is available: base your category/tags/summary primarily on the content, using the filename as supplementary context
-- If the filename contains Chinese academic keywords (作业/实验/报告/论文/课程) → consider adding "coursework" tag
-- If it contains career keywords (简历/求职/CV/resume/portfolio) → add "job" and "career" tags
-- If it contains finance keywords (银行/工资/发票/报销/税/tax/invoice) → add "finance" and "proof" tags
-- Images (jpg/png/gif/webp) → category "image", tags ["image","media"]
-- PDF → category "pdf"
+- If content is available: base your category/tags/summary primarily on the content
+- If the filename contains Chinese academic keywords → consider adding "coursework" tag
+- If it contains career keywords → add "job" and "career" tags
+- If it contains finance keywords → add "finance" and "proof" tags
 - Write the summary as if you have really analysed the file content.
+
+IMPORTANT: If the user provides style/extra overrides at the end of this prompt,
+those OVERRIDE all rules above with HIGHEST PRIORITY. Follow them exactly.
 """
 
 USER_PROMPT_TEMPLATE = """File: {name_before_drop}
@@ -251,9 +252,21 @@ def parse_file(
         # Build system prompt with style injected
         system = SYSTEM_PROMPT
         if style_prompt:
-            system += f"\n\nIMPORTANT STYLE GUIDELINES (apply to every naming task): {style_prompt}"
+            system += (
+                "\n\n=== HIGHEST-PRIORITY OVERRIDE (style) ===\n"
+                f"The following user style preference OVERRIDES all rules above. "
+                f"You MUST follow it exactly for the suggested_name, tags, and summary:\n"
+                f"{style_prompt}\n"
+                "=== END OVERRIDE ==="
+            )
         if extra_prompt:
-            system += f"\n\nADDITIONAL REQUEST FOR THIS FILE: {extra_prompt}"
+            system += (
+                "\n\n=== HIGHEST-PRIORITY OVERRIDE (this file only) ===\n"
+                f"This request OVERRIDES everything else including the style above. "
+                f"You MUST comply — this is the single most important instruction:\n"
+                f"{extra_prompt}\n"
+                "=== END OVERRIDE ==="
+            )
 
         # Read file content preview (for text-based files)
         content_preview = read_text_preview(Path(file_meta.path))
