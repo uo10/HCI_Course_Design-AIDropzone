@@ -3,9 +3,11 @@ import type {
   ExportResult,
   FileMetadata,
   ParseResult,
+  RegenerateRequest,
   RenameRequest,
   RenameResult,
   RollbackEntryDto,
+  JournalDeleteResult,
   UndoRequest,
   UndoResult,
 } from './types';
@@ -52,6 +54,15 @@ export function parseFile(file: FileMetadata, preferMock = false): Promise<Parse
   return post<ParseResult>('/parse', { file, prefer_mock: preferMock });
 }
 
+export function regenerateParse(req: RegenerateRequest): Promise<ParseResult> {
+  return post<ParseResult>('/parse/regenerate', {
+    file: req.file,
+    extra_prompt: req.extra_prompt ?? '',
+    context_tags: req.context_tags,
+    prefer_mock: req.prefer_mock ?? false,
+  });
+}
+
 export function renameFiles(req: RenameRequest): Promise<RenameResult> {
   return post<RenameResult>('/rename', req);
 }
@@ -76,18 +87,29 @@ export function getJournal(): Promise<RollbackEntryDto[]> {
   return get<RollbackEntryDto[]>('/journal');
 }
 
+/** 仅从 journal 移除记录，不撤回磁盘上的改名/导出 */
+export function deleteJournalEntries(entryIds: number[]): Promise<JournalDeleteResult> {
+  return request<JournalDeleteResult>(`${apiBase()}/journal`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entry_ids: entryIds }),
+  });
+}
+
 export function exportPackages(req: ExportRequest): Promise<ExportResult> {
   return post<ExportResult>('/export', req);
 }
 
 export interface BackendConfigPayload {
   workspace_root?: string;
+  naming_style_prompt?: string;
   ai_parser?: 'mock' | 'llm';
   ai_parser_options?: {
     llm?: {
       provider?: string;
       model?: string;
       base_url?: string;
+      api_key_env?: string;
       api_key?: string;
       api_key_set?: boolean;
     };
@@ -97,6 +119,7 @@ export interface BackendConfigPayload {
 export interface ConfigUpdatePayload {
   ai_parser?: 'mock' | 'llm';
   workspace_root?: string;
+  naming_style_prompt?: string;
   llm_provider?: string;
   llm_model?: string;
   llm_base_url?: string;

@@ -1,10 +1,18 @@
 import { useCallback, useState } from 'react';
 import type { RollbackEntryDto } from '../api/types';
-import { fetchJournal, isMockMode, undo } from '../services/dropzoneApi';
+import { deleteJournal, fetchJournal, isMockMode, undo } from '../services/dropzoneApi';
 import type { ActivityLogEntry, LogOperation } from '../types/activityLog';
 
 const MOCK_STORAGE_KEY = 'aidropzone.mock_journal';
 let mockNextId = 1;
+
+function sortNewestFirst(entries: ActivityLogEntry[]): ActivityLogEntry[] {
+  return [...entries].sort((a, b) => {
+    const t = b.timestamp.getTime() - a.timestamp.getTime();
+    if (t !== 0) return t;
+    return b.id - a.id;
+  });
+}
 
 function loadMockEntries(): ActivityLogEntry[] {
   try {
@@ -14,7 +22,7 @@ function loadMockEntries(): ActivityLogEntry[] {
     const entries = parsed.map(e => ({ ...e, timestamp: new Date(e.timestamp) }));
     const maxId = entries.reduce((m, e) => Math.max(m, e.id), 0);
     mockNextId = maxId + 1;
-    return entries;
+    return sortNewestFirst(entries);
   } catch {
     return [];
   }
@@ -70,7 +78,7 @@ export function useActivityLog() {
     setError(null);
     try {
       const raw = await fetchJournal();
-      setEntries(raw.map(dtoToEntry));
+      setEntries(sortNewestFirst(raw.map(dtoToEntry)));
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载日志失败');
     } finally {
@@ -95,7 +103,7 @@ export function useActivityLog() {
           label: payload.label,
         };
         setEntries(prev => {
-          const next = [entry, ...prev];
+          const next = sortNewestFirst([entry, ...prev]);
           saveMockEntries(next);
           return next;
         });
@@ -138,5 +146,36 @@ export function useActivityLog() {
     [entries, refresh],
   );
 
-  return { entries, loading, error, refresh, addEntry, undoEntry };
+  const deleteEntry = useCallback(
+    async (id: number): Promise<{ ok: boolean; message?: string }> => {
+      const entry = entries.find(e => e.id === id);
+      if (!entry) return { ok: false, message: '记录不存在' };
+
+      if (isMockMode()) {
+        setEntries(prev => {
+          const next = prev.filter(e => e.id !== id);
+          saveMockEntries(next);
+          return next;
+        });
+        return { ok: true };
+      }
+
+      try {
+        const res = await deleteJournal([id]);
+        await refresh();
+        if (res.status !== 'success') {
+          return { ok: false, message: res.error ?? '删除失败' };
+        }
+        if ((res.deleted_count ?? 0) === 0) {
+          return { ok: false, message: '日志中未找到该记录' };
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, message: err instanceof Error ? err.message : '删除失败' };
+      }
+    },
+    [entries, refresh],
+  );
+
+  return { entries, loading, error, refresh, addEntry, undoEntry, deleteEntry };
 }

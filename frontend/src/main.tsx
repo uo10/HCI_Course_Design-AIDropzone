@@ -6,9 +6,19 @@ import App from './App.tsx';
 if (window.dropzone?.isElectron) {
   const root = document.documentElement;
   root.classList.add('electron-app');
-  /** 首帧就标记小球模式，避免 body 灰底在 React 挂载前闪一下方框 */
-  void window.dropzone.getShellMode().then(mode => {
-    if (mode === 'ball') root.classList.add('electron-ball-mode');
+  /** 同步读模式，避免 panel→ball 或首帧时 electron-ball-mode 晚于灰底 */
+  const mode = window.dropzone.getShellModeSync();
+  if (mode === 'ball') {
+    root.classList.add('electron-ball-mode');
+    root.classList.add('electron-ball-focused');
+  }
+  void window.dropzone.getShellMode().then(m => {
+    if (m === 'ball') root.classList.add('electron-ball-mode');
+    else root.classList.remove('electron-ball-mode', 'electron-ball-focused');
+  });
+  window.dropzone.onWindowFocused(focused => {
+    if (focused) root.classList.add('electron-ball-focused');
+    else root.classList.remove('electron-ball-focused');
   });
 }
 

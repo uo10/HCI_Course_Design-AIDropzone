@@ -7,6 +7,8 @@ const isDev = !app.isPackaged;
 
 /** 360 式悬浮球：窗口与球同大，贴边时仅露出一条 */
 const BALL_SIZE = 56;
+/** 拖入靶心胶囊态（P0 morphing） */
+const BALL_CAPSULE = { width: 112, height: 64 };
 const BALL_PEEK = 16;
 /** 窗口中心距工作区边缘小于此值时，松手后贴边缩入；否则保持自由漂浮 */
 const BALL_DOCK_THRESHOLD = 52;
@@ -36,6 +38,14 @@ let ballAnchor = 0;
 let ballDockExpanded = false;
 /** true = 桌面任意位置漂浮；false = 已贴边，可 peek/展开 */
 let ballFloating = true;
+type BallVisualPreset = 'idle' | 'capsule';
+let ballVisualPreset: BallVisualPreset = 'idle';
+
+function ballDimensions(): { width: number; height: number } {
+  return ballVisualPreset === 'capsule'
+    ? { width: BALL_CAPSULE.width, height: BALL_CAPSULE.height }
+    : { width: BALL_SIZE, height: BALL_SIZE };
+}
 
 function normalizeFilePath(filePath: string): string {
   let p = filePath.trim().replace(/^["']|["']$/g, '');
@@ -99,6 +109,30 @@ function ensureWindowTransparent(): void {
   mainWindow.setBackgroundColor('#00000000');
 }
 
+function setWindowBackgroundMaterial(mode: ShellMode): void {
+  if (!mainWindow || process.platform !== 'win32') return;
+  try {
+    /** ball：禁止 DWM 在失焦顶置窗下铺矩形底板；panel：保持系统玻璃 */
+    mainWindow.setBackgroundMaterial(mode === 'ball' ? 'none' : 'mica');
+  } catch {
+    // 旧版 Windows / Electron 可能不支持
+  }
+}
+
+/** 小球失焦时 Win 易在 56×56 方窗四角显色，需重复声明透明并刷新合成 */
+function refreshBallWindowChrome(): void {
+  if (!mainWindow || shellMode !== 'ball') return;
+  ensureWindowTransparent();
+  setWindowBackgroundMaterial('ball');
+  mainWindow.setHasShadow(false);
+  mainWindow.webContents.invalidate();
+}
+
+function notifyWindowFocused(focused: boolean): void {
+  if (shellMode !== 'ball') return;
+  mainWindow?.webContents.send('shell:windowFocused', focused);
+}
+
 function clampBoundsToWorkArea(
   bounds: Electron.Rectangle,
   workArea: Electron.Rectangle,
@@ -125,72 +159,100 @@ function workAreaForBall(): Electron.Rectangle {
 }
 
 function clampBallAnchor(wa: Electron.Rectangle): number {
+  const { width, height } = ballDimensions();
   if (ballEdge === 'left' || ballEdge === 'right') {
     const min = wa.y;
-    const max = wa.y + wa.height - BALL_SIZE;
+    const max = wa.y + wa.height - height;
     return Math.min(max, Math.max(min, ballAnchor));
   }
   const min = wa.x;
-  const max = wa.x + wa.width - BALL_SIZE;
+  const max = wa.x + wa.width - width;
   return Math.min(max, Math.max(min, ballAnchor));
 }
 
 function ballBoundsPeek(wa: Electron.Rectangle): Electron.Rectangle {
   const anchor = clampBallAnchor(wa);
+  const { width, height } = ballDimensions();
   switch (ballEdge) {
     case 'right':
       return {
         x: wa.x + wa.width - BALL_PEEK,
         y: anchor,
-        width: BALL_SIZE,
-        height: BALL_SIZE,
+        width,
+        height,
       };
     case 'left':
       return {
-        x: wa.x - (BALL_SIZE - BALL_PEEK),
+        x: wa.x - (width - BALL_PEEK),
         y: anchor,
-        width: BALL_SIZE,
-        height: BALL_SIZE,
+        width,
+        height,
       };
     case 'top':
       return {
         x: anchor,
-        y: wa.y - (BALL_SIZE - BALL_PEEK),
-        width: BALL_SIZE,
-        height: BALL_SIZE,
+        y: wa.y - (height - BALL_PEEK),
+        width,
+        height,
       };
     case 'bottom':
       return {
         x: anchor,
         y: wa.y + wa.height - BALL_PEEK,
-        width: BALL_SIZE,
-        height: BALL_SIZE,
+        width,
+        height,
       };
   }
 }
 
 function ballBoundsExpanded(wa: Electron.Rectangle): Electron.Rectangle {
   const anchor = clampBallAnchor(wa);
+  const { width, height } = ballDimensions();
   switch (ballEdge) {
     case 'right':
       return {
-        x: wa.x + wa.width - BALL_SIZE,
+        x: wa.x + wa.width - width,
         y: anchor,
-        width: BALL_SIZE,
-        height: BALL_SIZE,
+        width,
+        height,
       };
     case 'left':
-      return { x: wa.x, y: anchor, width: BALL_SIZE, height: BALL_SIZE };
+      return { x: wa.x, y: anchor, width, height };
     case 'top':
-      return { x: anchor, y: wa.y, width: BALL_SIZE, height: BALL_SIZE };
+      return { x: anchor, y: wa.y, width, height };
     case 'bottom':
       return {
         x: anchor,
-        y: wa.y + wa.height - BALL_SIZE,
-        width: BALL_SIZE,
-        height: BALL_SIZE,
+        y: wa.y + wa.height - height,
+        width,
+        height,
       };
   }
+}
+
+/** 以当前窗口中心为锚缩放，避免扩为胶囊时跳动 */
+function applyBallVisualPreset(preset: BallVisualPreset): void {
+  if (!mainWindow || shellMode !== 'ball') return;
+  const b = mainWindow.getBounds();
+  const { width, height } =
+    preset === 'capsule'
+      ? { width: BALL_CAPSULE.width, height: BALL_CAPSULE.height }
+      : { width: BALL_SIZE, height: BALL_SIZE };
+  const cx = b.x + b.width / 2;
+  const cy = b.y + b.height / 2;
+  const wa = screen.getDisplayNearestPoint({ x: cx, y: cy }).workArea;
+  const target = clampBoundsToWorkArea(
+    {
+      x: Math.round(cx - width / 2),
+      y: Math.round(cy - height / 2),
+      width,
+      height,
+    },
+    wa,
+  );
+  ballVisualPreset = preset;
+  mainWindow.setBounds(target);
+  refreshBallWindowChrome();
 }
 
 function applyBallBounds(): void {
@@ -269,17 +331,21 @@ function applyBallMode(): void {
   );
 
   shellMode = 'ball';
+  ballVisualPreset = 'idle';
   /** 必须清空标题，否则 Win 会在 56×56 窗口旁绘制「AI Dropzone」文字条 */
   mainWindow.setTitle('');
   ensureWindowTransparent();
   mainWindow.setResizable(false);
   mainWindow.setMinimumSize(BALL_SIZE, BALL_SIZE);
-  mainWindow.setMaximumSize(BALL_SIZE, BALL_SIZE);
+  mainWindow.setMaximumSize(BALL_CAPSULE.width, BALL_CAPSULE.height);
   ballFloating = true;
   ballDockExpanded = false;
   mainWindow.setBounds({ x, y, width: BALL_SIZE, height: BALL_SIZE });
   /** 小球窗口关闭阴影，减轻 Windows 下拖动时外缘「方框/描边」视觉异常 */
   mainWindow.setHasShadow(false);
+  setWindowBackgroundMaterial('ball');
+  mainWindow.setAlwaysOnTop(true);
+  refreshBallWindowChrome();
   notifyShellMode('ball');
 }
 
@@ -308,6 +374,8 @@ function applyPanelMode(): void {
     clampBoundsToWorkArea({ x, y, width, height }, wa),
   );
   mainWindow.setHasShadow(true);
+  setWindowBackgroundMaterial('panel');
+  mainWindow.setAlwaysOnTop(false);
   notifyShellMode('panel');
 }
 
@@ -320,14 +388,15 @@ function createWindow(): void {
     height: startPanel ? PANEL_DEFAULT.height : BALL_SIZE,
     minWidth: startPanel ? PANEL_MIN.width : BALL_SIZE,
     minHeight: startPanel ? PANEL_MIN.height : BALL_SIZE,
-    maxWidth: startPanel ? undefined : BALL_SIZE,
-    maxHeight: startPanel ? undefined : BALL_SIZE,
+    maxWidth: startPanel ? undefined : BALL_CAPSULE.width,
+    maxHeight: startPanel ? undefined : BALL_CAPSULE.height,
     resizable: startPanel,
     frame: false,
-    alwaysOnTop: true,
+    alwaysOnTop: !startPanel,
     /** 透明 + Win11 圆角：底色只由网页在圆角矩形内绘制，禁止原生方形铺色 */
     transparent: true,
     backgroundColor: '#00000000',
+    backgroundMaterial: process.platform === 'win32' ? (startPanel ? 'mica' : 'none') : undefined,
     roundedCorners: true,
     hasShadow: startPanel,
     skipTaskbar: false,
@@ -353,6 +422,15 @@ function createWindow(): void {
       mainWindow?.setHasShadow(false);
     }
     notifyShellMode(shellMode);
+  });
+
+  mainWindow.on('blur', () => {
+    refreshBallWindowChrome();
+    notifyWindowFocused(false);
+  });
+  mainWindow.on('focus', () => {
+    refreshBallWindowChrome();
+    notifyWindowFocused(true);
   });
 
   mainWindow.on('closed', () => {
@@ -405,6 +483,10 @@ ipcMain.handle('dropzone:getFileMetadataBatch', async (_event: IpcMainInvokeEven
 
 ipcMain.handle('window:getShellMode', () => shellMode);
 
+ipcMain.on('window:getShellModeSync', event => {
+  event.returnValue = shellMode;
+});
+
 ipcMain.on('window:collapseToBall', () => {
   applyBallMode();
 });
@@ -456,10 +538,11 @@ ipcMain.on('ball:moveBy', (_event, dx: number, dy: number) => {
   const wa = screen.getDisplayNearestPoint(center).workArea;
   let nx = b.x + Math.round(dx);
   let ny = b.y + Math.round(dy);
-  nx = Math.min(wa.x + wa.width - BALL_SIZE, Math.max(wa.x, nx));
-  ny = Math.min(wa.y + wa.height - BALL_SIZE, Math.max(wa.y, ny));
+  const { width, height } = ballDimensions();
+  nx = Math.min(wa.x + wa.width - width, Math.max(wa.x, nx));
+  ny = Math.min(wa.y + wa.height - height, Math.max(wa.y, ny));
   /** 每次移动固定宽高，避免 Win32 在拖动时把无边框窗口当成可缩放区域导致「整块变大」 */
-  mainWindow.setBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE });
+  mainWindow.setBounds({ x: nx, y: ny, width, height });
 });
 
 /** 将悬浮球窗口左上角放到屏幕坐标 (left, top)，与指针抓取偏移配合实现 1:1 跟手 */
@@ -468,14 +551,21 @@ ipcMain.on('ball:moveTo', (_event, left: number, top: number) => {
   ballFloating = true;
   let nx = Math.round(left);
   let ny = Math.round(top);
+  const { width, height } = ballDimensions();
   const center = {
-    x: nx + Math.floor(BALL_SIZE / 2),
-    y: ny + Math.floor(BALL_SIZE / 2),
+    x: nx + Math.floor(width / 2),
+    y: ny + Math.floor(height / 2),
   };
   const wa = screen.getDisplayNearestPoint(center).workArea;
-  nx = Math.min(wa.x + wa.width - BALL_SIZE, Math.max(wa.x, nx));
-  ny = Math.min(wa.y + wa.height - BALL_SIZE, Math.max(wa.y, ny));
-  mainWindow.setBounds({ x: nx, y: ny, width: BALL_SIZE, height: BALL_SIZE });
+  nx = Math.min(wa.x + wa.width - width, Math.max(wa.x, nx));
+  ny = Math.min(wa.y + wa.height - height, Math.max(wa.y, ny));
+  mainWindow.setBounds({ x: nx, y: ny, width, height });
+});
+
+ipcMain.on('ball:setVisualPreset', (_event, preset: BallVisualPreset) => {
+  if (shellMode !== 'ball') return;
+  if (preset !== 'idle' && preset !== 'capsule') return;
+  applyBallVisualPreset(preset);
 });
 
 ipcMain.on('ball:getBoundsSync', event => {

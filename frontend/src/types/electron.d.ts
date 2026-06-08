@@ -1,6 +1,7 @@
 import type { FileMetadata } from '../api/types';
 
 export type ShellMode = 'ball' | 'panel';
+export type BallVisualPreset = 'idle' | 'capsule';
 
 export interface BallBounds {
   x: number;
@@ -15,6 +16,7 @@ export interface DropzoneBridge {
   getFileMetadata(path: string): Promise<FileMetadata>;
   getFileMetadataBatch(paths: string[]): Promise<FileMetadata[]>;
   getShellMode(): Promise<ShellMode>;
+  getShellModeSync(): ShellMode;
   expandToPanel(): void;
   collapseToBall(): void;
   closeWindow(): void;
@@ -29,7 +31,9 @@ export interface DropzoneBridge {
   moveBallTo(left: number, top: number): void;
   /** 主进程同步读悬浮球窗口外接矩形（仅用于按下时算抓取偏移） */
   getBallBoundsSync(): BallBounds | null;
+  setBallVisualPreset(preset: BallVisualPreset): void;
   onShellModeChanged(callback: (mode: ShellMode) => void): () => void;
+  onWindowFocused(callback: (focused: boolean) => void): () => void;
 }
 
 declare global {

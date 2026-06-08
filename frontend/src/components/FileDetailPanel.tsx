@@ -1,34 +1,63 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   X,
   ChevronDown,
   Lightbulb,
   Check,
-  Pencil,
   Ban,
   Shield,
   Lock,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import type { FileItem } from '../types/fileItem';
 import { isMockMode } from '../services/dropzoneApi';
 import { FileIcon } from '../utils/fileIcon';
+import { normalizeUserTag, normalizeUserTagMessage } from '../utils/normalizeUserTag';
+import { CategoryReasonBlock } from './CategoryReasonBlock';
 import { TagChip } from './TagChip';
+import { ThinkingPlaceholder } from './ThinkingPlaceholder';
+import { TypewriterText } from './TypewriterText';
+import { useNamingStylePrompt } from '../hooks/useNamingStylePrompt';
+import { useTypewriter } from '../hooks/useTypewriter';
 
 interface Props {
   file: FileItem;
   onClose: () => void;
   onAdoptRename?: (file: FileItem, newName: string, tags: string[]) => Promise<void>;
+  onRegenerate?: (extraPrompt: string, contextTags: string[]) => Promise<void>;
 }
 
-export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
+export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: Props) {
+  const namingStylePrompt = useNamingStylePrompt();
   const inputRef = useRef<HTMLInputElement>(null);
   const [editedName, setEditedName] = useState(file.suggestedName);
   const [editedTags, setEditedTags] = useState<string[]>([...file.tags]);
   const [tagInput, setTagInput] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [extraPrompt, setExtraPrompt] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+  const [revealKey, setRevealKey] = useState(0);
+  const prevWaitingRef = useRef(file.status === 'parsing');
+
+  const isWaitingSuggestion = file.status === 'parsing' || regenerating;
+  const animateSuggestion = revealKey > 0 && !isWaitingSuggestion;
+
+  const canRegenerate =
+    !isMockMode() &&
+    Boolean(file.sourcePath) &&
+    file.status === 'processed' &&
+    Boolean(file.parseMetadata) &&
+    Boolean(onRegenerate);
+
+  const { displayText: displaySuggestedName, showCursor } = useTypewriter({
+    text: file.suggestedName,
+    enabled: animateSuggestion,
+    resetKey: `${file.id}:${revealKey}`,
+  });
 
   useEffect(() => {
     setEditedName(file.suggestedName);
@@ -38,19 +67,66 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
     setEditedTags([...file.tags]);
   }, [file.id, file.tags]);
 
+  /** 打开详情且已有结果：立即播揭示（解决半秒内解析完、后打开详情无动画） */
+  useLayoutEffect(() => {
+    if (isWaitingSuggestion || file.status !== 'processed' || !file.suggestedName) return;
+    setRevealKey(k => (k === 0 ? 1 : k));
+  }, [file.id]);
+
+  /** 详情已打开时：解析/重生成从等待 → 完成后再播一遍 */
+  useEffect(() => {
+    const waiting = isWaitingSuggestion;
+    const ended = prevWaitingRef.current && !waiting;
+    prevWaitingRef.current = waiting;
+    if (!ended || waiting || file.status !== 'processed' || !file.suggestedName) return;
+    setRevealKey(k => k + 1);
+  }, [isWaitingSuggestion, file.status, file.suggestedName, file.categoryReason]);
+
   useEffect(() => {
     setAdopting(false);
+    setRegenOpen(false);
+    setExtraPrompt('');
+    setRegenerating(false);
+    prevWaitingRef.current = file.status === 'parsing';
   }, [file.id]);
 
   function addTag() {
-    const t = tagInput.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    if (t && !editedTags.includes(t)) setEditedTags(prev => [...prev, t]);
+    const result = normalizeUserTag(tagInput);
+    if (!result.ok) {
+      if (tagInput.trim()) {
+        showToast(normalizeUserTagMessage(result.reason));
+      }
+      setTagInput('');
+      return;
+    }
+    if (!editedTags.includes(result.tag)) {
+      setEditedTags(prev => [...prev, result.tag]);
+    }
     setTagInput('');
   }
 
   function showToast(msg: string) {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2800);
+  }
+
+  async function handleRegenerateSubmit() {
+    if (!onRegenerate) {
+      showToast('重新生成未初始化，请刷新应用重试');
+      return;
+    }
+    setRegenerating(true);
+    showToast('正在重新生成…');
+    try {
+      await onRegenerate(extraPrompt, editedTags);
+      setRegenOpen(false);
+      setExtraPrompt('');
+      showToast('已更新命名建议');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '重新生成失败');
+    } finally {
+      setRegenerating(false);
+    }
   }
 
   async function handleAdopt() {
@@ -70,17 +146,12 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
     showToast('正在改名，请稍候…');
     try {
       await onAdoptRename(file, editedName, editedTags);
-      showToast('已采用建议');
+      showToast('已确认改名');
     } catch (err) {
       showToast(err instanceof Error ? err.message : '改名失败');
     } finally {
       setAdopting(false);
     }
-  }
-
-  function handleManualEdit() {
-    inputRef.current?.focus();
-    inputRef.current?.select();
   }
 
   return (
@@ -142,10 +213,18 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
           </div>
           <NameBlock
             label="现文件名"
-            name={file.suggestedName}
+            name={
+              isWaitingSuggestion
+                ? ''
+                : animateSuggestion
+                  ? displaySuggestedName
+                  : file.suggestedName
+            }
             extension={file.extension}
             aiBadge
             highlight
+            waiting={isWaitingSuggestion}
+            showCursor={showCursor}
           />
         </div>
 
@@ -198,7 +277,17 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
           <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
           <div>
             <p className="text-xs font-semibold text-emerald-800/80">建议原因</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{file.categoryReason}</p>
+            <CategoryReasonBlock
+              summary={file.categoryReason}
+              lastExtraPrompt={file.lastExtraPrompt}
+              persistentStylePrompt={namingStylePrompt}
+              parseCategory={file.parseCategory}
+              fileSizeBytes={file.parseMetadata?.size_bytes}
+              extension={file.extension}
+              waiting={isWaitingSuggestion}
+              animateReveal={animateSuggestion && !isWaitingSuggestion}
+              revealKey={`${file.id}:${revealKey}`}
+            />
           </div>
         </div>
       </div>
@@ -209,31 +298,74 @@ export function FileDetailPanel({ file, onClose, onAdoptRename }: Props) {
         </div>
       )}
 
+      {regenOpen && (
+        <div className="border-t border-white/40 px-4 py-3">
+          <p className="mb-1.5 text-xs font-semibold text-slate-600">本次补充说明（可选）</p>
+          <textarea
+            value={extraPrompt}
+            onChange={e => setExtraPrompt(e.target.value)}
+            placeholder="例如：强调算法名、突出实验版本"
+            maxLength={500}
+            rows={3}
+            disabled={regenerating}
+            className="w-full resize-y rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 disabled:opacity-60"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={regenerating}
+              onClick={() => void handleRegenerateSubmit()}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-violet-600 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${regenerating ? 'animate-spin' : ''}`} />
+              {regenerating ? '生成中…' : '开始生成'}
+            </button>
+            <button
+              type="button"
+              disabled={regenerating}
+              onClick={() => setRegenOpen(false)}
+              className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs text-slate-600 hover:bg-white disabled:opacity-60"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-2 border-t border-white/40 p-4">
         <button
           type="button"
-          disabled={adopting}
+          disabled={!canRegenerate || adopting || regenerating || regenOpen}
+          title={
+            isMockMode()
+              ? '关闭 Mock 并使用 electron:dev:full 后可重生成'
+              : !file.parseMetadata
+                ? '请重新拖入该文件'
+                : undefined
+          }
+          onClick={() => setRegenOpen(true)}
+          className="flex items-center justify-center gap-1 rounded-xl border border-violet-200/80 bg-violet-50/90 py-2.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          重新生成
+        </button>
+        <button
+          type="button"
+          disabled={adopting || regenerating}
           onClick={() => void handleAdopt()}
           className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-60"
         >
           <Check className="h-3.5 w-3.5" />
-          {adopting ? '处理中…' : '采用建议'}
+          {adopting ? '处理中…' : '确认改名'}
         </button>
         <button
           type="button"
-          onClick={handleManualEdit}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 py-2.5 text-xs font-medium text-slate-600 hover:bg-white"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          手动修改
-        </button>
-        <button
-          type="button"
+          disabled={regenerating}
           onClick={onClose}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 py-2.5 text-xs font-medium text-slate-600 hover:bg-white"
+          className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/80 py-2.5 text-xs font-medium text-slate-600 hover:bg-white disabled:opacity-60"
         >
           <Ban className="h-3.5 w-3.5" />
-          忽略建议
+          忽略
         </button>
       </div>
 
@@ -251,12 +383,16 @@ function NameBlock({
   extension,
   aiBadge,
   highlight,
+  waiting,
+  showCursor,
 }: {
   label: string;
   name: string;
   extension: string;
   aiBadge?: boolean;
   highlight?: boolean;
+  waiting?: boolean;
+  showCursor?: boolean;
 }) {
   return (
     <div
@@ -286,7 +422,17 @@ function NameBlock({
             </span>
           )}
         </div>
-        <p className="truncate text-sm font-medium text-slate-800">{name}</p>
+        {waiting ? (
+          <ThinkingPlaceholder label="AI 正在命名…" className="py-0.5" />
+        ) : (
+          <p className="truncate text-sm font-medium text-slate-800">
+            {aiBadge ? (
+              <TypewriterText text={name || '…'} showCursor={showCursor} />
+            ) : (
+              name
+            )}
+          </p>
+        )}
       </div>
     </div>
   );

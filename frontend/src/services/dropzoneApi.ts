@@ -1,7 +1,9 @@
 import {
+  deleteJournalEntries,
   exportPackages,
   getJournal,
   parseFile,
+  regenerateParse,
   renameFiles,
   undoOperation,
 } from '../api/client';
@@ -46,6 +48,19 @@ export function parseOne(file: FileMetadata, preferMock = isMockMode()): Promise
   return parseFile(file, preferMock);
 }
 
+export function regenerateOne(
+  file: FileMetadata,
+  extraPrompt: string,
+  contextTags?: string[],
+): Promise<ParseResult> {
+  return regenerateParse({
+    file,
+    extra_prompt: extraPrompt,
+    context_tags: contextTags?.length ? contextTags : undefined,
+    prefer_mock: false,
+  });
+}
+
 export function rename(req: RenameRequest): Promise<RenameResult> {
   return renameFiles(req);
 }
@@ -56,6 +71,10 @@ export function undo(req: UndoRequest): Promise<UndoResult> {
 
 export function fetchJournal(): Promise<RollbackEntryDto[]> {
   return getJournal();
+}
+
+export function deleteJournal(entryIds: number[]) {
+  return deleteJournalEntries(entryIds);
 }
 
 export function exportZip(req: ExportRequest): Promise<ExportResult> {
