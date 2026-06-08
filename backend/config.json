@@ -1,0 +1,27 @@
+{
+  "workspace_root": "D:\\HCI_Course_Design-AIDropzone\\workspace",
+  "ai_parser": "mock",
+  "ai_parser_options": {
+    "mock": {},
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "api_key_env": "AI_DROPZONE_API_KEY",
+      "timeout_seconds": 30,
+      "max_retries": 3,
+      "api_key": ""
+    }
+  },
+  "naming": {
+    "default_pattern": "{date}_{name}.{ext}",
+    "separator": "_",
+    "case": "lower"
+  },
+  "rollback": {
+    "journal_path": "rollback_log.json",
+    "max_entries": 1000
+  },
+  "export": {
+    "include_manifest": true
+  }
+}
