@@ -33,15 +33,22 @@ class ExportManifest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    """Request to export files matching the given tags."""
+    """Request to export files matching given tags OR an explicit file list."""
 
-    tags: TagSet = Field(..., min_length=1, description="Tags to filter by — files must have ALL of these")
+    tags: TagSet = Field(
+        default_factory=set,
+        description="Tags to filter by — at least one of tags or file_paths required",
+    )
     output_dir: str = Field(..., description="Directory where the .zip will be written")
     package_name: str = Field(
         default="export",
         description="Name of the .zip file (without extension)",
     )
     include_manifest: bool = Field(default=True)
+    file_paths: Optional[list[str]] = Field(
+        default=None,
+        description="Explicit list of file paths to package (overrides tags)",
+    )
 
 
 class ExportResult(BaseModel):
