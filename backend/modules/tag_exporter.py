@@ -87,36 +87,57 @@ def _sha256_hex(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def export_packages(request: ExportRequest) -> ExportResult:
-    """Export files matching *request.tags* as a .zip archive.
+    """Export files as a .zip archive.
 
-    Files are selected by querying the workspace tag index (tags_index.json)
-    rather than parsing filenames.  Steps:
-        1. Query tag index for files with ALL requested tags.
-        2. Copy matches into a staging directory.
-        3. Generate manifest.json inside staging.
-        4. Compress staging → .zip via shutil.make_archive.
-        5. Record a rollback entry (EXPORT) so undo can delete the zip.
-        6. Clean up staging.
+    Two modes:
+        file_paths  — explicit list of paths to package (from frontend checkboxes)
+        tags        — tag-based lookup (backward compatible)
+
+    Steps:
+        1. Resolve file list from file_paths or tags.
+        2. Validate all files are inside workspace_root.
+        3. Copy matches into a staging directory.
+        4. Generate manifest.json inside staging.
+        5. Compress staging → .zip via shutil.make_archive.
+        6. Record a rollback entry (EXPORT) so undo can delete the zip.
+        7. Clean up staging.
     """
     staging: Optional[Path] = None
     try:
         workspace = get_workspace_root()
+        workspace_resolved = workspace.resolve()
         output_dir = Path(request.output_dir).resolve()
 
-        # ---- 1. Find matching files from tag index ----
-        index_data = load_index(workspace)
-        tag_list = sorted(request.tags)
+        # ---- 1. Resolve file list ----
         matched: list[Path] = []
         file_tags: dict[str, set[str]] = {}
+        index_data = load_index(workspace)
 
-        for filename, file_tags_list in index_data.items():
-            if filename in _SKIP_FILENAMES:
-                continue
-            if set(tag_list).issubset(set(file_tags_list)):
-                fpath = (workspace / filename).resolve()
-                if fpath.is_file():
-                    matched.append(fpath)
-                    file_tags[str(fpath)] = set(file_tags_list)
+        if request.file_paths:
+            # Explicit file list (frontend checkbox selection)
+            for raw in request.file_paths:
+                candidate = Path(raw).resolve()
+                # Security: only allow files inside workspace_root
+                if not str(candidate).startswith(str(workspace_resolved)):
+                    continue
+                if candidate.is_file():
+                    matched.append(candidate)
+                    file_tags[str(candidate)] = set(
+                        index_data.get(candidate.name, [])
+                    )
+        elif request.tags:
+            # Tag-based lookup (backward compatible)
+            tag_list = sorted(request.tags)
+            for filename, file_tags_list in index_data.items():
+                if filename in _SKIP_FILENAMES:
+                    continue
+                if set(tag_list).issubset(set(file_tags_list)):
+                    fpath = (workspace / filename).resolve()
+                    if fpath.is_file():
+                        matched.append(fpath)
+                        file_tags[str(fpath)] = set(file_tags_list)
+
+        matched.sort()
 
         # ---- 2. Create staging directory ----
         staging = Path(tempfile.mkdtemp(prefix="aidropzone_export_"))
@@ -167,7 +188,7 @@ def export_packages(request: ExportRequest) -> ExportResult:
         )
 
     finally:
-        # ---- 6. Cleanup staging ----
+        # ---- 7. Cleanup staging ----
         if staging is not None and staging.exists():
             try:
                 shutil.rmtree(staging, ignore_errors=True)

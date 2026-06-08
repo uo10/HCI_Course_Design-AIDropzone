@@ -229,11 +229,7 @@ def route_get_tags() -> dict:
 
 @app.post("/tags/rescan", response_model=dict)
 def route_rescan_tags() -> dict:
-    """Explicitly rescan the workspace and rebuild the tag index.
-
-    Use this after manually adding files to the workspace directory,
-    or when the index appears out-of-sync.
-    """
+    """Explicitly rescan the workspace and rebuild the tag index."""
     try:
         ws = get_workspace_root()
         from .modules.tag_index import rescan_index, load_index
@@ -244,6 +240,51 @@ def route_rescan_tags() -> dict:
             "workspace_root": str(ws),
             "newly_indexed": added,
             "total_files": len(index),
+        }
+    except Exception as exc:
+        return {"status": "failure", "error": str(exc)}
+
+
+@app.post("/tags/search", response_model=dict)
+def route_search_tags(body: dict) -> dict:
+    """Search workspace files by tags.  Read-only — does not create a zip.
+
+    Body:
+        {"tags": ["document", "report"], "match_mode": "any"}
+
+    match_mode: "any" (default, OR) | "all" (AND)
+
+    Returns a flat list suitable for frontend checkbox rendering.
+    """
+    try:
+        ws = get_workspace_root()
+        tags = set(body.get("tags", []))
+        if not tags:
+            return {"status": "failure", "error": "No tags provided"}
+
+        mode = body.get("match_mode", "any")
+        if mode not in ("any", "all"):
+            mode = "any"
+
+        from .modules.tag_index import find_by_tags, load_index as tag_load
+        files = find_by_tags(ws, tags, match_mode=mode)
+        index = tag_load(ws)
+
+        results = []
+        for f in files:
+            results.append({
+                "path": str(f),
+                "name": f.name,
+                "size_bytes": f.stat().st_size,
+                "tags": sorted(index.get(f.name, [])),
+            })
+
+        return {
+            "status": "success",
+            "workspace_root": str(ws),
+            "match_mode": mode,
+            "total_files": len(results),
+            "files": results,
         }
     except Exception as exc:
         return {"status": "failure", "error": str(exc)}

@@ -160,8 +160,14 @@ def rescan_index(workspace: Path) -> int:
 # Query helpers (used by exporter)
 # ---------------------------------------------------------------------------
 
-def find_by_tags(workspace: Path, tags: set[str]) -> list[Path]:
-    """Return workspace files that have ALL requested tags (AND semantics).
+def find_by_tags(
+    workspace: Path, tags: set[str], match_mode: str = "all"
+) -> list[Path]:
+    """Return workspace files matching *tags*.
+
+    match_mode:
+        "all" (default) — file must have every tag (AND / intersection)
+        "any" — file must have at least one tag (OR / union)
 
     Before querying, runs a rescan to pick up any files that were placed
     in the workspace without going through /rename.  Stale entries are
@@ -177,9 +183,16 @@ def find_by_tags(workspace: Path, tags: set[str]) -> list[Path]:
 
     matched: list[Path] = []
     stale: list[str] = []
+    tag_set = set(tag_list)
 
     for filename, file_tags in data.items():
-        if set(tag_list).issubset(set(file_tags)):
+        file_set = set(file_tags)
+        hit = (
+            tag_set.issubset(file_set)
+            if match_mode == "all"
+            else tag_set.intersection(file_set)
+        )
+        if hit:
             fpath = (workspace / filename).resolve()
             if fpath.is_file():
                 matched.append(fpath)
