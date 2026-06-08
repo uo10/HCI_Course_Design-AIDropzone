@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, screen, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, shell, type IpcMainInvokeEvent } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
+import { copyFilesToClipboard, cutFilesToClipboard } from './fileClipboard';
 
 const VITE_DEV_URL = 'http://127.0.0.1:5173';
 const isDev = !app.isPackaged;
@@ -479,6 +480,38 @@ ipcMain.handle('dropzone:getFileMetadataBatch', async (_event: IpcMainInvokeEven
     throw new Error('无法读取拖入的文件，请改用手动选择或检查文件权限。');
   }
   return results;
+});
+
+async function resolveExistingFilePath(filePath: string): Promise<string> {
+  const resolved = normalizeFilePath(filePath);
+  if (!resolved) {
+    throw new Error('文件路径为空');
+  }
+  const stat = await fs.stat(resolved);
+  if (!stat.isFile()) {
+    throw new Error('路径指向的不是文件');
+  }
+  return resolved;
+}
+
+ipcMain.handle('dropzone:openPath', async (_event: IpcMainInvokeEvent, filePath: string) => {
+  const resolved = await resolveExistingFilePath(filePath);
+  return shell.openPath(resolved);
+});
+
+ipcMain.handle('dropzone:showItemInFolder', async (_event: IpcMainInvokeEvent, filePath: string) => {
+  const resolved = await resolveExistingFilePath(filePath);
+  shell.showItemInFolder(resolved);
+});
+
+ipcMain.handle('dropzone:copyFilesToClipboard', async (_event: IpcMainInvokeEvent, paths: string[]) => {
+  const resolved = await Promise.all(paths.map(resolveExistingFilePath));
+  await copyFilesToClipboard(resolved);
+});
+
+ipcMain.handle('dropzone:cutFilesToClipboard', async (_event: IpcMainInvokeEvent, paths: string[]) => {
+  const resolved = await Promise.all(paths.map(resolveExistingFilePath));
+  await cutFilesToClipboard(resolved);
 });
 
 ipcMain.handle('window:getShellMode', () => shellMode);

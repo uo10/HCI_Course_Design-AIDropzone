@@ -232,6 +232,10 @@ export function useFileStore() {
     [],
   );
 
+  const flashFileCompleted = useCallback((id: string) => {
+    flashJustCompleted(id, setFiles);
+  }, []);
+
   const removeSelection = useCallback(() => setSelectedFileId(null), []);
 
   const removeFile = useCallback((id: string) => {
@@ -268,6 +272,7 @@ export function useFileStore() {
     updateFile,
     regenerateFile,
     removeSelection,
+    flashFileCompleted,
     removeFile,
     syncAfterUndoRename,
   };

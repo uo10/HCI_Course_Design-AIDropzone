@@ -251,14 +251,14 @@ export function SettingsView({ onBack }: Props) {
             </p>
 
             <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-              AI 解析引擎
+              隐私模式
             </label>
             <select
               value={aiParser}
               onChange={e => setAiParser(e.target.value as 'mock' | 'llm')}
               className="mb-4 w-full rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-400"
             >
-              <option value="mock">规则 Mock（不消耗 DeepSeek）</option>
+              <option value="mock">隐私安全模式</option>
               <option value="llm">DeepSeek 大模型</option>
             </select>
           </>

@@ -121,8 +121,12 @@ html.electron-app .glass-panel-body textarea,
 html.electron-app .glass-panel-body select,
 html.electron-app .glass-panel-body a,
 html.electron-app .glass-panel-body [role='button'],
+html.electron-app .glass-panel-body [role='menu'],
+html.electron-app .glass-panel-body [role='menuitem'],
 html.electron-app .glass-panel-body .cursor-pointer,
-html.electron-app .glass-panel-body .electron-no-drag {
+html.electron-app .glass-panel-body .electron-no-drag,
+html.electron-app .file-action-menu,
+html.electron-app .file-action-menu button {
   -webkit-app-region: no-drag;
 }
 

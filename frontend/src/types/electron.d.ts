@@ -13,8 +13,13 @@ export interface BallBounds {
 export interface DropzoneBridge {
   isElectron: boolean;
   getPathForFile(file: File): string;
-  getFileMetadata(path: string): Promise<FileMetadata>;
+  getFileMetadata(path: string, hint?: Record<string, unknown>): Promise<FileMetadata>;
   getFileMetadataBatch(paths: string[]): Promise<FileMetadata[]>;
+  /** 用系统默认应用打开文件；成功返回空字符串，失败返回错误信息 */
+  openPath(filePath: string): Promise<string>;
+  showItemInFolder(filePath: string): Promise<void>;
+  copyFilesToClipboard(paths: string[]): Promise<void>;
+  cutFilesToClipboard(paths: string[]): Promise<void>;
   getShellMode(): Promise<ShellMode>;
   getShellModeSync(): ShellMode;
   expandToPanel(): void;

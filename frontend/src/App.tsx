@@ -54,6 +54,7 @@ export default function App() {
     updateFile,
     regenerateFile,
     removeSelection,
+    flashFileCompleted,
     removeFile,
     syncAfterUndoRename,
   } = useFileStore();
@@ -157,6 +158,7 @@ export default function App() {
         newPath,
         label: `${file.name} → ${displayName}`,
       });
+      flashFileCompleted(file.id);
       return;
     }
 
@@ -174,6 +176,7 @@ export default function App() {
       newPath: baseName,
       label: `${file.name} → ${baseName}`,
     });
+    flashFileCompleted(file.id);
   }
 
   async function handleUndo(id: number) {

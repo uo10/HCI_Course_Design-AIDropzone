@@ -18,6 +18,33 @@ for (const name of fs.readdirSync(dir)) {
   renamed += 1;
 }
 
+/** .js → .cjs 后，相对 require 须带 .cjs 后缀，否则 Node 无法解析 */
+function patchRelativeRequires(filePath) {
+  let content = fs.readFileSync(filePath, 'utf8');
+  const patched = content.replace(
+    /require\((['"])\.\/([^'"]+)\1\)/g,
+    (match, quote, mod) => {
+      if (mod.endsWith('.cjs') || mod.endsWith('.json') || mod.endsWith('.node')) {
+        return match;
+      }
+      const candidate = path.join(dir, `${mod}.cjs`);
+      if (fs.existsSync(candidate)) {
+        return `require(${quote}./${mod}.cjs${quote})`;
+      }
+      return match;
+    },
+  );
+  if (patched !== content) {
+    fs.writeFileSync(filePath, patched, 'utf8');
+  }
+}
+
+for (const name of fs.readdirSync(dir)) {
+  if (name.endsWith('.cjs')) {
+    patchRelativeRequires(path.join(dir, name));
+  }
+}
+
 if (renamed === 0) {
   console.warn('[build:electron] dist-electron 内未找到 .js 输出，请检查 electron/**/*.ts 是否参与编译。');
 } else {

@@ -110,10 +110,12 @@ export interface ExportManifest {
 }
 
 export interface ExportRequest {
-  tags: string[];
+  tags?: string[];
+  file_paths?: string[];
   output_dir: string;
   package_name?: string;
   include_manifest?: boolean;
+  match_mode?: 'any' | 'all';
 }
 
 export interface ExportResult {
@@ -121,4 +123,33 @@ export interface ExportResult {
   zip_path?: string | null;
   manifest?: ExportManifest | null;
   errors: { path?: string; error: string }[];
+}
+
+export interface TagsLibraryResult {
+  status: OperationStatus | 'success' | 'failure';
+  workspace_root?: string;
+  total_files?: number;
+  tags?: Record<string, number>;
+  error?: string;
+}
+
+export interface TagSearchFileItem {
+  path: string;
+  name: string;
+  size_bytes: number;
+  tags: string[];
+}
+
+export interface TagSearchRequest {
+  tags: string[];
+  match_mode?: 'any' | 'all';
+}
+
+export interface TagSearchResult {
+  status: OperationStatus | 'success' | 'failure';
+  workspace_root?: string;
+  match_mode?: 'any' | 'all';
+  total_files?: number;
+  files?: TagSearchFileItem[];
+  error?: string;
 }
