@@ -1,10 +1,11 @@
 import type { MouseEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X } from 'lucide-react';
 import type { FileItem } from '../types/fileItem';
-import { FileIcon } from '../utils/fileIcon';
 import { formatRelativeTime } from '../utils/formatTime';
 import { TagChip } from './TagChip';
+import { FileIconActions } from './FileIconActions';
 
 interface Props {
   file: FileItem;
@@ -14,6 +15,14 @@ interface Props {
 }
 
 export function FileListItem({ file, selected, onSelect, onRemove }: Props) {
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!actionError) return;
+    const timer = window.setTimeout(() => setActionError(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [actionError]);
+
   const statusVariant =
     file.status === 'processed'
       ? 'status-processed'
@@ -53,9 +62,12 @@ export function FileListItem({ file, selected, onSelect, onRemove }: Props) {
           : 'border-white/55 bg-white/55 shadow-sm backdrop-blur-sm hover:bg-white/75'
       } ${file.justCompleted ? 'ring-2 ring-emerald-300/60' : ''}`}
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-blue-600 shadow-sm">
-        <FileIcon extension={file.extension} className="h-5 w-5" />
-      </div>
+      <FileIconActions
+        sourcePath={file.sourcePath}
+        extension={file.extension}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-blue-600 shadow-sm"
+        onActionError={setActionError}
+      />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex flex-wrap items-center gap-1.5">
           <TagChip
@@ -70,6 +82,9 @@ export function FileListItem({ file, selected, onSelect, onRemove }: Props) {
             ))}
         </div>
         <p className="truncate text-sm font-medium text-slate-800">{file.name}</p>
+        {actionError && (
+          <p className="mt-0.5 truncate text-[10px] text-amber-600">{actionError}</p>
+        )}
         {file.status === 'error' && file.parseError && (
           <p className="mt-0.5 truncate text-[10px] text-red-500">{file.parseError}</p>
         )}

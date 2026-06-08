@@ -22,6 +22,14 @@ contextBridge.exposeInMainWorld('dropzone', {
     ipcRenderer.invoke('dropzone:getFileMetadata', { path: filePath, hint }),
   getFileMetadataBatch: (paths: string[]) =>
     ipcRenderer.invoke('dropzone:getFileMetadataBatch', paths),
+  openPath: (filePath: string) =>
+    ipcRenderer.invoke('dropzone:openPath', filePath) as Promise<string>,
+  showItemInFolder: (filePath: string) =>
+    ipcRenderer.invoke('dropzone:showItemInFolder', filePath) as Promise<void>,
+  copyFilesToClipboard: (paths: string[]) =>
+    ipcRenderer.invoke('dropzone:copyFilesToClipboard', paths) as Promise<void>,
+  cutFilesToClipboard: (paths: string[]) =>
+    ipcRenderer.invoke('dropzone:cutFilesToClipboard', paths) as Promise<void>,
   getShellMode: () => ipcRenderer.invoke('window:getShellMode') as Promise<ShellMode>,
   getShellModeSync: () => ipcRenderer.sendSync('window:getShellModeSync') as ShellMode,
   expandToPanel: () => {

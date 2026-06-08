@@ -2,9 +2,11 @@ import {
   deleteJournalEntries,
   exportPackages,
   getJournal,
+  getTagsLibrary,
   parseFile,
   regenerateParse,
   renameFiles,
+  searchByTags,
   undoOperation,
 } from '../api/client';
 import type {
@@ -15,6 +17,9 @@ import type {
   RenameRequest,
   RenameResult,
   RollbackEntryDto,
+  TagSearchRequest,
+  TagSearchResult,
+  TagsLibraryResult,
   UndoRequest,
   UndoResult,
 } from '../api/types';
@@ -79,4 +84,12 @@ export function deleteJournal(entryIds: number[]) {
 
 export function exportZip(req: ExportRequest): Promise<ExportResult> {
   return exportPackages(req);
+}
+
+export function fetchTagsLibrary(): Promise<TagsLibraryResult> {
+  return getTagsLibrary();
+}
+
+export function searchTags(req: TagSearchRequest): Promise<TagSearchResult> {
+  return searchByTags(req);
 }

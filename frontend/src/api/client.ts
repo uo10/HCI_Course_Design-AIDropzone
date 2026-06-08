@@ -8,6 +8,9 @@ import type {
   RenameResult,
   RollbackEntryDto,
   JournalDeleteResult,
+  TagSearchRequest,
+  TagSearchResult,
+  TagsLibraryResult,
   UndoRequest,
   UndoResult,
 } from './types';
@@ -98,6 +101,17 @@ export function deleteJournalEntries(entryIds: number[]): Promise<JournalDeleteR
 
 export function exportPackages(req: ExportRequest): Promise<ExportResult> {
   return post<ExportResult>('/export', req);
+}
+
+export function getTagsLibrary(): Promise<TagsLibraryResult> {
+  return get<TagsLibraryResult>('/tags');
+}
+
+export function searchByTags(req: TagSearchRequest): Promise<TagSearchResult> {
+  return post<TagSearchResult>('/tags/search', {
+    tags: req.tags,
+    match_mode: req.match_mode ?? 'any',
+  });
 }
 
 export interface BackendConfigPayload {

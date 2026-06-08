@@ -99,10 +99,10 @@ export function GlassShell({
               type="button"
               onClick={onOpenExport}
               className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-white/55 hover:text-slate-800"
-              title="按标签打包导出 zip"
+              title="搜索 workspace 文件并打包 zip"
             >
               <Package className="h-3.5 w-3.5" />
-              打包
+              搜索与打包
             </button>
             <button
               type="button"

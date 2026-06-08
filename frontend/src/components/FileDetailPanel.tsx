@@ -37,6 +37,8 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
   const [tagInput, setTagInput] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
+  const [adoptSuccess, setAdoptSuccess] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
   const [regenOpen, setRegenOpen] = useState(false);
   const [extraPrompt, setExtraPrompt] = useState('');
   const [regenerating, setRegenerating] = useState(false);
@@ -84,11 +86,25 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
 
   useEffect(() => {
     setAdopting(false);
+    setAdoptSuccess(false);
     setRegenOpen(false);
     setExtraPrompt('');
     setRegenerating(false);
     prevWaitingRef.current = file.status === 'parsing';
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
   }, [file.id]);
+
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current != null) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    },
+    [],
+  );
 
   function addTag() {
     const result = normalizeUserTag(tagInput);
@@ -143,13 +159,16 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
       return;
     }
     setAdopting(true);
-    showToast('正在改名，请稍候…');
     try {
       await onAdoptRename(file, editedName, editedTags);
-      showToast('已确认改名');
+      setAdopting(false);
+      setAdoptSuccess(true);
+      closeTimerRef.current = window.setTimeout(() => {
+        closeTimerRef.current = null;
+        onClose();
+      }, 720);
     } catch (err) {
       showToast(err instanceof Error ? err.message : '改名失败');
-    } finally {
       setAdopting(false);
     }
   }
@@ -160,7 +179,7 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 16 }}
       transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-      className="flex min-h-0 w-[58%] shrink-0 flex-col border-l border-white/45 bg-white/25 backdrop-blur-md"
+      className="relative flex min-h-0 w-[58%] shrink-0 flex-col border-l border-white/45 bg-white/25 backdrop-blur-md"
     >
       <div className="flex items-start gap-3 border-b border-white/40 px-4 py-4">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 text-white shadow-md">
@@ -335,7 +354,7 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
       <div className="grid grid-cols-3 gap-2 border-t border-white/40 p-4">
         <button
           type="button"
-          disabled={!canRegenerate || adopting || regenerating || regenOpen}
+          disabled={!canRegenerate || adopting || adoptSuccess || regenerating || regenOpen}
           title={
             isMockMode()
               ? '关闭 Mock 并使用 electron:dev:full 后可重生成'
@@ -351,7 +370,7 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
         </button>
         <button
           type="button"
-          disabled={adopting || regenerating}
+          disabled={adopting || adoptSuccess || regenerating}
           onClick={() => void handleAdopt()}
           className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-60"
         >
@@ -373,6 +392,38 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
         <Lock className="h-3 w-3 shrink-0" />
         <span>系统仅提供命名建议，确认前不会修改原始文件</span>
       </p>
+
+      {adoptSuccess && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/55 backdrop-blur-md"
+          aria-live="polite"
+        >
+          <motion.div
+            initial={{ scale: 0.2, opacity: 0 }}
+            animate={{ scale: [0.2, 1.22, 1], opacity: 1 }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+            className="relative flex h-16 w-16 items-center justify-center"
+          >
+            <span
+              className="absolute inset-0 animate-ping rounded-full bg-emerald-400/45"
+              aria-hidden
+            />
+            <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 shadow-[0_0_24px_8px_rgba(52,211,153,0.55)]">
+              <Check className="h-7 w-7 text-emerald-600" strokeWidth={3} />
+            </span>
+          </motion.div>
+          <motion.p
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.18, duration: 0.35 }}
+            className="mt-4 text-sm font-semibold text-emerald-700"
+          >
+            改名成功
+          </motion.p>
+        </motion.div>
+      )}
     </motion.aside>
   );
 }
