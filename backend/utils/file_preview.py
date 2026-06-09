@@ -1,13 +1,18 @@
 """
 File-content preview helper — shared by Mock and LLM parsers.
 
-Extracts a plain-text preview from supported text/binary files
-so the parser can feed actual content (not just filenames) to
-the analysis engine.
+Extracts plain-text previews from text files, PDFs, Office documents, etc.
+so the parser can feed actual content (not just filenames) to the AI.
+
+Supports:
+    Plain text: txt md csv log json xml yaml py js ts java cpp html css sql ...
+    PDF:        pdf  (via PyPDF2)
+    Word:       docx (via python-docx)
+    Excel:      xlsx (via openpyxl)
+    PowerPoint: pptx (via python-pptx)
 
 Public API:
     read_text_preview(path, max_chars=4000) → str
-    is_text_file(path) → bool
 """
 
 from __future__ import annotations
@@ -15,7 +20,8 @@ from __future__ import annotations
 import codecs
 from pathlib import Path
 
-# Extensions we treat as plain text (readable with .read_text)
+# ---------- extension classification ----------
+
 _TEXT_EXTENSIONS: set[str] = {
     "txt", "md", "csv", "log", "json", "xml", "yaml", "yml",
     "py", "js", "ts", "jsx", "tsx", "java", "cpp", "c", "h",
@@ -23,78 +29,177 @@ _TEXT_EXTENSIONS: set[str] = {
     "html", "css", "scss", "less", "sql", "sh", "bash", "zsh",
     "ps1", "bat", "cmd", "ini", "cfg", "toml", "env", "conf",
     "tex", "rst", "org", "r", "rmd", "ipynb", "dockerfile",
-    "gitignore", "makefile", "cmake", "gradle", "lock",
+    "gitignore", "makefile", "cmake", "gradle", "lock", "rtf",
 }
 
-# Known binary extensions — don't even try reading these
+_DOCUMENT_EXTENSIONS: dict[str, str] = {
+    "pdf":  "pdf",
+    "docx": "docx",
+    "xlsx": "xlsx",
+    "pptx": "pptx",
+}
+
+# Binary extensions — never attempt to read
 _BINARY_EXTENSIONS: set[str] = {
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "ico", "svg",
     "mp4", "avi", "mov", "mkv", "wmv", "flv",
     "mp3", "wav", "flac", "aac", "ogg", "wma",
     "zip", "rar", "7z", "tar", "gz", "bz2", "xz",
-    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
     "exe", "dll", "so", "dylib", "obj", "o", "class",
     "pyc", "pyo", "pyd",
 }
 
-# UTF-8 BOM and fallback encodings to try
+# ---------- encoding helpers ----------
+
 _FALLBACK_ENCODINGS = ["utf-8", "utf-16", "gbk", "latin-1"]
 
 
-def is_text_file(path: Path) -> bool:
-    """Return True if *path* is a candidate for text-content extraction."""
-    ext = path.suffix.lstrip(".").lower()
-    if ext in _TEXT_EXTENSIONS:
-        return True
-    if ext in _BINARY_EXTENSIONS:
-        return False
-    # Unknown extension: probe
-    return _probe_is_text(path)
+def _read_as_text(path: Path, max_chars: int) -> str:
+    """Read first *max_chars* chars as plain text (multi-encoding fallback)."""
+    raw = path.read_bytes()
+    for enc in _FALLBACK_ENCODINGS:
+        try:
+            text = codecs.decode(raw, enc, errors="strict")
+            return text[:max_chars] + (
+                "\n... (truncated)" if len(text) > max_chars else ""
+            )
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return ""
 
 
-def _probe_is_text(path: Path) -> bool:
-    """Try to read the first 512 bytes as UTF-8."""
+# ---------- document format readers ----------
+
+def _read_pdf(path: Path, max_chars: int) -> str:
+    """Extract text from a PDF via PyPDF2 (no system deps)."""
     try:
-        with open(path, "rb") as fh:
-            head = fh.read(512)
-        # Check for null bytes (strong binary indicator)
-        if b"\x00" in head:
-            return False
-        head.decode("utf-8")
-        return True
-    except (OSError, UnicodeDecodeError):
-        return False
+        from PyPDF2 import PdfReader
+        reader = PdfReader(str(path))
+        parts: list[str] = []
+        for page in reader.pages[:10]:  # first 10 pages
+            t = (page.extract_text() or "").strip()
+            if t:
+                parts.append(t)
+            if sum(len(p) for p in parts) >= max_chars:
+                break
+        text = "\n".join(parts)
+        return text[:max_chars] + (
+            "\n... (truncated)" if len(text) > max_chars else ""
+        )
+    except Exception:
+        return ""
+
+
+def _read_docx(path: Path, max_chars: int) -> str:
+    """Extract text from a .docx via python-docx."""
+    try:
+        from docx import Document
+        doc = Document(str(path))
+        parts: list[str] = []
+        for para in doc.paragraphs:
+            t = para.text.strip()
+            if t:
+                parts.append(t)
+            if sum(len(p) for p in parts) >= max_chars:
+                break
+        text = "\n".join(parts)
+        return text[:max_chars] + (
+            "\n... (truncated)" if len(text) > max_chars else ""
+        )
+    except Exception:
+        return ""
+
+
+def _read_xlsx(path: Path, max_chars: int) -> str:
+    """Extract text from an .xlsx via openpyxl."""
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(str(path), read_only=True, data_only=True)
+        parts: list[str] = []
+        for sheet in wb.worksheets[:3]:  # first 3 sheets
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c) for c in row if c is not None]
+                if cells:
+                    parts.append("\t".join(cells))
+                if sum(len(p) for p in parts) >= max_chars:
+                    break
+        wb.close()
+        text = "\n".join(parts)
+        return text[:max_chars] + (
+            "\n... (truncated)" if len(text) > max_chars else ""
+        )
+    except Exception:
+        return ""
+
+
+def _read_pptx(path: Path, max_chars: int) -> str:
+    """Extract text from a .pptx via python-pptx."""
+    try:
+        from pptx import Presentation
+        prs = Presentation(str(path))
+        parts: list[str] = []
+        for slide in prs.slides[:20]:  # first 20 slides
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    t = shape.text_frame.text.strip()
+                    if t:
+                        parts.append(t)
+            if sum(len(p) for p in parts) >= max_chars:
+                break
+        text = "\n".join(parts)
+        return text[:max_chars] + (
+            "\n... (truncated)" if len(text) > max_chars else ""
+        )
+    except Exception:
+        return ""
+
+
+# ---------- dispatch ----------
+
+_DOC_READERS = {
+    "pdf":  _read_pdf,
+    "docx": _read_docx,
+    "xlsx": _read_xlsx,
+    "pptx": _read_pptx,
+}
 
 
 def read_text_preview(path: Path, max_chars: int = 4000) -> str:
-    """Return the first *max_chars* characters of a text file.
+    """Return the first *max_chars* characters of a file's content.
 
-    Tries multiple encodings.  Returns "" for binary / unreadable files.
+    Text files are read directly.  PDF/DOCX/XLSX/PPTX are extracted via
+    dedicated libraries.  Binary files (images, video, audio) return "".
+
+    If a document library isn't installed, that format returns "" silently.
     """
     try:
         if not path.is_file():
             return ""
-        if not is_text_file(path):
+
+        ext = path.suffix.lstrip(".").lower()
+
+        # Document formats
+        reader = _DOC_READERS.get(ext)
+        if reader:
+            return reader(path, max_chars)
+
+        # Plain text formats
+        if ext in _TEXT_EXTENSIONS:
+            return _read_as_text(path, max_chars)
+
+        # Explicit binary — no attempt
+        if ext in _BINARY_EXTENSIONS:
             return ""
 
-        raw = path.read_bytes()
-
-        # Try each encoding
-        for enc in _FALLBACK_ENCODINGS:
-            try:
-                text = codecs.decode(raw, enc, errors="strict")
-                break
-            except (UnicodeDecodeError, LookupError):
-                continue
-        else:
-            # All encodings failed — probably binary
+        # Unknown extension — probe for text
+        try:
+            head = path.read_bytes()[:512]
+            if b"\x00" in head:
+                return ""
+            head.decode("utf-8")
+            return _read_as_text(path, max_chars)
+        except (OSError, UnicodeDecodeError):
             return ""
-
-        # Truncate to max_chars
-        if len(text) > max_chars:
-            text = text[:max_chars] + "\n... (truncated)"
-
-        return text.strip()
 
     except (OSError, PermissionError):
         return ""
