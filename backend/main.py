@@ -112,9 +112,10 @@ def route_parse_batch(body: BatchParseRequest) -> BatchParseResult:
     """AI-parses multiple files in one call."""
     from .models.common import OperationStatus
 
-    parser = _get_parser() if not body.prefer_mock else None
-    if body.prefer_mock or parser is None:
+    if body.prefer_mock:
         from .modules.mock_ai_parser import parse_file as parser
+    else:
+        parser = _get_parser()
 
     items, errors = [], []
     for fm in body.files:
