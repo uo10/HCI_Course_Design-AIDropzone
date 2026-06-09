@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('dropzone', {
     ipcRenderer.invoke('dropzone:cutFilesToClipboard', paths) as Promise<void>,
   getShellMode: () => ipcRenderer.invoke('window:getShellMode') as Promise<ShellMode>,
   getShellModeSync: () => ipcRenderer.sendSync('window:getShellModeSync') as ShellMode,
+  getApiBaseSync: () => ipcRenderer.sendSync('backend:getApiBaseSync') as string,
   expandToPanel: () => {
     ipcRenderer.send('window:expandToPanel');
   },

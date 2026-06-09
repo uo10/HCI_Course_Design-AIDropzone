@@ -150,6 +150,38 @@ def _call_anthropic(cfg: dict, system: str, user: str, timeout: int) -> str:
 
 _VALID_CATEGORIES = {c.value for c in FileCategory}
 
+# Must match backend.models.common.Tag (no whitespace or path separators)
+_TAG_PATTERN = re.compile(r"^[^\s<>:\"/\\|?*]+$")
+
+
+def _normalize_llm_tag(raw: object) -> str | None:
+    """Coerce LLM tag strings into valid Tag values (lowercase, no spaces)."""
+    t = str(raw).lower().strip()
+    if not t:
+        return None
+    # Phrases like "reinforcement learning" → reinforcement_learning
+    t = re.sub(r"\s+", "_", t)
+    t = re.sub(r"[<>:\"/\\|?*]+", "", t)
+    t = re.sub(r"_+", "_", t).strip("._-")
+    if not t or len(t) > 64:
+        return None
+    if not _TAG_PATTERN.match(t):
+        return None
+    return t
+
+
+def _fallback_tags(category: FileCategory) -> set[str]:
+    mapping: dict[FileCategory, set[str]] = {
+        FileCategory.PDF: {"pdf", "document"},
+        FileCategory.DOCUMENT: {"document", "text"},
+        FileCategory.IMAGE: {"image", "media"},
+        FileCategory.CODE: {"code", "text"},
+        FileCategory.SPREADSHEET: {"spreadsheet", "data"},
+        FileCategory.PRESENTATION: {"presentation", "slides"},
+    }
+    return set(mapping.get(category, {"file", "misc"}))
+
+
 def _parse_llm_response(raw: str, file_meta: FileMetadata, content_hash: str) -> ParseItem:
     """Extract structured fields from the LLM's JSON text.  Falls back
     gracefully if the JSON is malformed or missing keys."""
@@ -174,10 +206,14 @@ def _parse_llm_response(raw: str, file_meta: FileMetadata, content_hash: str) ->
     category = FileCategory(category_str) if category_str in _VALID_CATEGORIES else FileCategory.UNKNOWN
 
     raw_tags = data.get("tags", [])
+    tags: set[str] = set()
     if isinstance(raw_tags, list):
-        tags = {str(t).lower().strip() for t in raw_tags[:5] if str(t).strip()}
-    else:
-        tags = set()
+        for t in raw_tags[:8]:
+            normalized = _normalize_llm_tag(t)
+            if normalized:
+                tags.add(normalized)
+    if not tags:
+        tags = _fallback_tags(category)
 
     summary = str(data.get("summary", "LLM analysis completed."))
     keywords = [str(k) for k in data.get("keywords", [])[:5]] if isinstance(data.get("keywords"), list) else []

@@ -1,0 +1,31 @@
+{
+    "workspace_root":  "",
+    "ai_parser":  "llm",
+    "ai_parser_options":  {
+                              "mock":  {
+
+                                       },
+                              "llm":  {
+                                          "provider":  "deepseek",
+                                          "model":  "deepseek-chat",
+                                          "api_key_env":  "AI_DROPZONE_API_KEY",
+                                          "timeout_seconds":  30,
+                                          "max_retries":  3,
+                                          "api_key":  "",
+                                          "base_url":  "https://api.deepseek.com/v1"
+                                      }
+                          },
+    "naming":  {
+                   "default_pattern":  "{date}_{name}.{ext}",
+                   "separator":  "_",
+                   "case":  "lower"
+               },
+    "rollback":  {
+                     "journal_path":  "rollback_log.json",
+                     "max_entries":  1000
+                 },
+    "export":  {
+                   "include_manifest":  true
+               },
+    "naming_style_prompt":  ""
+}

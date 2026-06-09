@@ -16,6 +16,11 @@ import type {
 } from './types';
 
 function apiBase(): string {
+  const fromElectron =
+    typeof window !== 'undefined' ? window.dropzone?.getApiBaseSync?.()?.trim() : '';
+  if (fromElectron) {
+    return fromElectron;
+  }
   return (
     localStorage.getItem('aidropzone.api_base')?.trim() ||
     import.meta.env.VITE_API_BASE?.trim() ||

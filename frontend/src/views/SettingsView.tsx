@@ -20,19 +20,27 @@ const DEEPSEEK_LLM = {
   baseUrl: 'https://api.deepseek.com/v1',
 } as const;
 
+function isPackagedInstall(): boolean {
+  return Boolean(window.dropzone?.getApiBaseSync?.()?.includes('17823'));
+}
+
 function hasAnyLlmKey(deepseekKey: string, keyHint: string): boolean {
-  return Boolean(
-    deepseekKey.trim() ||
-      keyHint ||
-      localStorage.getItem(STORAGE_LLM_KEY)?.trim(),
-  );
+  if (deepseekKey.trim() || keyHint) return true;
+  if (isPackagedInstall()) return false;
+  return Boolean(localStorage.getItem(STORAGE_LLM_KEY)?.trim());
 }
 
 function resolveLlmApiKeyForSave(deepseekKey: string): string | undefined {
   const typed = deepseekKey.trim();
   if (typed) return typed;
-  const cached = localStorage.getItem(STORAGE_LLM_KEY)?.trim();
-  return cached || undefined;
+  if (isPackagedInstall()) return undefined;
+  return localStorage.getItem(STORAGE_LLM_KEY)?.trim() || undefined;
+}
+
+function clearPackagedSettingsCache(): void {
+  localStorage.removeItem(STORAGE_LLM_KEY);
+  localStorage.removeItem(STORAGE_WORKSPACE);
+  localStorage.removeItem(STORAGE_NAMING_STYLE);
 }
 
 function isMissingConfigEndpointError(err: unknown): boolean {
@@ -50,8 +58,9 @@ interface Props {
 }
 
 export function SettingsView({ onBack }: Props) {
+  const packaged = isPackagedInstall();
   const [workspace, setWorkspace] = useState(
-    () => localStorage.getItem(STORAGE_WORKSPACE) ?? '',
+    () => (packaged ? '' : localStorage.getItem(STORAGE_WORKSPACE)) ?? '',
   );
   const [apiBase, setApiBase] = useState(
     () => localStorage.getItem('aidropzone.api_base') ?? getApiBase(),
@@ -60,7 +69,7 @@ export function SettingsView({ onBack }: Props) {
   const [aiParser, setAiParser] = useState<'mock' | 'llm'>('mock');
   const [deepseekKey, setDeepseekKey] = useState('');
   const [namingStylePrompt, setNamingStylePrompt] = useState(
-    () => localStorage.getItem(STORAGE_NAMING_STYLE) ?? '',
+    () => (packaged ? '' : localStorage.getItem(STORAGE_NAMING_STYLE)) ?? '',
   );
   const [keyHint, setKeyHint] = useState('');
   const [configError, setConfigError] = useState<string | null>(null);
@@ -74,11 +83,16 @@ export function SettingsView({ onBack }: Props) {
       .then(res => {
         if (cancelled) return;
         const cfg = res.config;
-        if (cfg.workspace_root) setWorkspace(cfg.workspace_root);
-        if (typeof cfg.naming_style_prompt === 'string') {
-          setNamingStylePrompt(cfg.naming_style_prompt);
-          localStorage.setItem(STORAGE_NAMING_STYLE, cfg.naming_style_prompt);
-        }
+        const ws = cfg.workspace_root?.trim() ?? '';
+        setWorkspace(ws);
+        if (ws) localStorage.setItem(STORAGE_WORKSPACE, ws);
+        else localStorage.removeItem(STORAGE_WORKSPACE);
+
+        const style = cfg.naming_style_prompt?.trim() ?? '';
+        setNamingStylePrompt(style);
+        if (style) localStorage.setItem(STORAGE_NAMING_STYLE, style);
+        else localStorage.removeItem(STORAGE_NAMING_STYLE);
+
         if (cfg.ai_parser === 'llm' || cfg.ai_parser === 'mock') {
           setAiParser(cfg.ai_parser);
         }
@@ -89,15 +103,20 @@ export function SettingsView({ onBack }: Props) {
               ? 'DeepSeek'
               : llm.provider || 'LLM';
           setKeyHint(`已配置 ${vendor} · ${llm.api_key}`);
-        } else if (cfg.ai_parser === 'llm' && llm?.provider !== DEEPSEEK_LLM.provider) {
-          setKeyHint(
-            `当前解析引擎为 ${llm?.provider || '未知'}，点击保存将切换为 DeepSeek`,
-          );
+        } else {
+          setKeyHint('');
+          localStorage.removeItem(STORAGE_LLM_KEY);
+          if (cfg.ai_parser === 'llm' && llm?.provider !== DEEPSEEK_LLM.provider) {
+            setKeyHint(
+              `当前解析引擎为 ${llm?.provider || '未知'}，点击保存将切换为 DeepSeek`,
+            );
+          }
         }
       })
       .catch(() => {
+        if (cancelled || isPackagedInstall()) return;
         const cached = localStorage.getItem(STORAGE_LLM_KEY);
-        if (!cancelled && cached) {
+        if (cached) {
           setKeyHint('后端未连接；密钥暂存在本机浏览器，启动 uvicorn 后请再保存一次。');
         }
       });
@@ -125,6 +144,9 @@ export function SettingsView({ onBack }: Props) {
 
     setSaving(true);
     try {
+      if (isPackagedInstall()) {
+        clearPackagedSettingsCache();
+      }
       localStorage.setItem(STORAGE_WORKSPACE, workspace.trim());
       localStorage.setItem('aidropzone.api_base', apiBase.trim());
       localStorage.setItem(STORAGE_NAMING_STYLE, namingStylePrompt);
@@ -256,11 +278,16 @@ export function SettingsView({ onBack }: Props) {
             <select
               value={aiParser}
               onChange={e => setAiParser(e.target.value as 'mock' | 'llm')}
-              className="mb-4 w-full rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-400"
+              className="mb-1 w-full rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-400"
             >
               <option value="mock">隐私安全模式</option>
               <option value="llm">DeepSeek 大模型</option>
             </select>
+            {aiParser === 'llm' && (
+              <p className="mb-4 text-[11px] leading-relaxed text-amber-700">
+                若解析出现 401，说明 API Key 无效或已撤销，请在下方重新填写并保存。
+              </p>
+            )}
           </>
         )}
 

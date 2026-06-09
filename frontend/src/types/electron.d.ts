@@ -22,6 +22,8 @@ export interface DropzoneBridge {
   cutFilesToClipboard(paths: string[]): Promise<void>;
   getShellMode(): Promise<ShellMode>;
   getShellModeSync(): ShellMode;
+  /** 安装包固定返回 http://127.0.0.1:17823；开发模式返回空字符串 */
+  getApiBaseSync(): string;
   expandToPanel(): void;
   collapseToBall(): void;
   closeWindow(): void;

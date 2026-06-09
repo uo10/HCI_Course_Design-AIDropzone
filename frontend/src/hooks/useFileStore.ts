@@ -10,6 +10,7 @@ import {
 import { isMockMode, parseOne, regenerateOne } from '../services/dropzoneApi';
 import type { FileItem } from '../types/fileItem';
 import { formatApiError, isNetworkFetchError } from '../utils/apiErrors';
+import { extractLlmDegradedInfo, formatLlmDegradedMessage } from '../utils/llmDegraded';
 import { resolveDroppedFilePath } from '../utils/electronPath';
 import { metadataFromDroppedFile } from '../utils/fileMetadataFromDrop';
 import { pathLooksAbsolute } from '../utils/pathLooksAbsolute';
@@ -88,6 +89,32 @@ export function useFileStore() {
         throw new Error(result.error ?? '解析失败');
       }
       const data = result.data;
+      const { degraded, reason, cleanSummary } = extractLlmDegradedInfo(data.summary);
+      if (degraded) {
+        setFiles(prev =>
+          prev.map(f =>
+            f.id === itemId
+              ? {
+                  ...f,
+                  sourcePath: sourcePath.trim(),
+                  name: metadata.name_before_drop,
+                  suggestedName: metadata.name_before_drop,
+                  tags: [],
+                  categoryReason: cleanSummary,
+                  extension: extOf(metadata.name_before_drop),
+                  parseCategory: data.category,
+                  sensitive: false,
+                  parseMetadata: metadata,
+                  lastExtraPrompt: undefined,
+                  status: 'error' as const,
+                  parseError: formatLlmDegradedMessage(reason),
+                }
+              : f,
+          ),
+        );
+        return;
+      }
+
       const sensitive = data.tags.includes('sensitive');
       const apiPath = data.file_path.trim();
       const nextSourcePath = pathLooksAbsolute(apiPath) ? apiPath : sourcePath.trim();
@@ -211,6 +238,11 @@ export function useFileStore() {
       }
 
       const data = result.data;
+      const { degraded, reason } = extractLlmDegradedInfo(data.summary);
+      if (degraded) {
+        throw new Error(formatLlmDegradedMessage(reason));
+      }
+
       const sensitive = data.tags.includes('sensitive');
       setFiles(prev =>
         prev.map(f =>

@@ -42,6 +42,10 @@ export function setMockModeOverride(mock: boolean) {
 }
 
 export function getApiBase(): string {
+  const fromElectron = window.dropzone?.getApiBaseSync?.()?.trim();
+  if (fromElectron) {
+    return fromElectron;
+  }
   return (
     localStorage.getItem('aidropzone.api_base')?.trim() ||
     import.meta.env.VITE_API_BASE?.trim() ||

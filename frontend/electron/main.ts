@@ -1,10 +1,26 @@
-import { app, BrowserWindow, ipcMain, screen, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, shell, type IpcMainInvokeEvent } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
 import { copyFilesToClipboard, cutFilesToClipboard } from './fileClipboard';
+import {
+  getBundledApiBase,
+  startBundledBackend,
+  stopBundledBackend,
+} from './backendManager';
 
 const VITE_DEV_URL = 'http://127.0.0.1:5173';
 const isDev = !app.isPackaged;
+
+/** 安装包默认大面板；开发默认悬浮球（可用 --panel / DROPZONE_START_PANEL=1） */
+function shouldStartPanel(): boolean {
+  if (process.env.DROPZONE_START_BALL === '1') return false;
+  return app.isPackaged || process.env.DROPZONE_START_PANEL === '1';
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 /** 360 式悬浮球：窗口与球同大，贴边时仅露出一条 */
 const BALL_SIZE = 56;
@@ -381,7 +397,7 @@ function applyPanelMode(): void {
 }
 
 function createWindow(): void {
-  const startPanel = process.env.DROPZONE_START_PANEL === '1';
+  const startPanel = shouldStartPanel();
   shellMode = startPanel ? 'panel' : 'ball';
 
   mainWindow = new BrowserWindow({
@@ -413,6 +429,12 @@ function createWindow(): void {
     void mainWindow.loadURL(VITE_DEV_URL);
   } else {
     void mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      dialog.showErrorBox(
+        'AI Dropzone',
+        `界面加载失败：\n${errorDescription}\n${validatedURL}\n(错误码 ${errorCode})`,
+      );
+    });
   }
 
   mainWindow.webContents.once('did-finish-load', () => {
@@ -439,14 +461,45 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 先出界面，避免后端冷启动期间长时间「无反应」
   createWindow();
+
+  if (app.isPackaged) {
+    try {
+      await startBundledBackend();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      dialog.showErrorBox(
+        'AI Dropzone',
+        `无法启动内置后端服务：\n${message}\n\n请尝试重新安装，或联系开发者。`,
+      );
+      app.quit();
+      return;
+    }
+  }
+
+  app.on('second-instance', () => {
+    if (!mainWindow) {
+      createWindow();
+      return;
+    }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  void stopBundledBackend();
 });
 
 app.on('window-all-closed', () => {
@@ -518,6 +571,10 @@ ipcMain.handle('window:getShellMode', () => shellMode);
 
 ipcMain.on('window:getShellModeSync', event => {
   event.returnValue = shellMode;
+});
+
+ipcMain.on('backend:getApiBaseSync', event => {
+  event.returnValue = getBundledApiBase();
 });
 
 ipcMain.on('window:collapseToBall', () => {

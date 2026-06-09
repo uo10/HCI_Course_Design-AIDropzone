@@ -6,6 +6,13 @@ env/
 Thumbs.db
 desktop.ini
 rollback_log.json
+backend/config.json
+backend/dist/
+backend/build/pyinstaller-work/
+backend/workspace/
+frontend/release/
+/build/
+/dist/
 CLAUDE.md
 .claude*
 test_run.py

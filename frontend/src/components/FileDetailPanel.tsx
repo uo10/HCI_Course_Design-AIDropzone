@@ -370,7 +370,7 @@ export function FileDetailPanel({ file, onClose, onAdoptRename, onRegenerate }: 
         </button>
         <button
           type="button"
-          disabled={adopting || adoptSuccess || regenerating}
+          disabled={adopting || adoptSuccess || regenerating || file.status === 'error'}
           onClick={() => void handleAdopt()}
           className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-60"
         >

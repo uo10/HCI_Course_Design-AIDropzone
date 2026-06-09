@@ -98,7 +98,7 @@ export function FileIconActions({
       setMenu(null);
     }
 
-    function onClickOutside(event: MouseEvent) {
+    function onClickOutside(event: globalThis.MouseEvent) {
       const target = event.target as Node | null;
       if (rootRef.current?.contains(target)) return;
       if (menuRef.current?.contains(target)) return;

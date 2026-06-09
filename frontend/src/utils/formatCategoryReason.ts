@@ -1,6 +1,7 @@
 /** 将后端/Mock/LLM 返回的 categoryReason 统一拆成与 Mock 一致的分行展示 */
 
 import type { FileCategory } from '../api/types';
+import { extractLlmDegradedInfo } from './llmDegraded';
 
 export type ReasonLineKind = 'cot' | 'desc' | 'style' | 'extra' | 'meta' | 'other';
 
@@ -25,13 +26,12 @@ const CATEGORY_DESCRIPTIONS: Record<FileCategory, string> = {
   unknown: '暂无法识别的文件类型，建议人工确认',
 };
 
-/** 后端 read_text_preview 会跳过的扩展名（与 file_preview._BINARY_EXTENSIONS 一致） */
+/** 后端 read_text_preview 无法提取正文的扩展名（与 file_preview._BINARY_EXTENSIONS 一致） */
 const BINARY_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'ico', 'svg',
   'mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv',
   'mp3', 'wav', 'flac', 'aac', 'ogg', 'wma',
   'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
   'exe', 'dll', 'so', 'dylib', 'obj', 'o', 'class',
   'pyc', 'pyo', 'pyd',
 ]);
@@ -136,9 +136,10 @@ export function parseCategoryReason(
   persistentStylePrompt?: string,
   options: Omit<ParseReasonOptions, 'lastExtraPrompt' | 'persistentStylePrompt'> = {},
 ): ReasonLine[] {
+  const { cleanSummary } = extractLlmDegradedInfo(summary);
   const { parseCategory, fileSizeBytes, extension } = options;
 
-  const normalized = normalizeSummaryForDisplay(summary);
+  const normalized = normalizeSummaryForDisplay(cleanSummary);
   const lines: ReasonLine[] = [];
 
   if (normalized) {
@@ -184,7 +185,7 @@ export function parseCategoryReason(
 
   const ext = extension?.replace(/^\./, '').toLowerCase() ?? '';
   const hasContentNote = lines.some(l => l.text.includes('内容预览'));
-  if (ext && isBinaryExtension(ext) && !hasContentNote && !isStructuredMockSummary(summary)) {
+  if (ext && isBinaryExtension(ext) && !hasContentNote && !isStructuredMockSummary(cleanSummary)) {
     lines.push({
       kind: 'meta',
       label: '内容预览',

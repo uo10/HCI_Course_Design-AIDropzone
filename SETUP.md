@@ -5,6 +5,44 @@
 
 ---
 
+## 0. 用户安装（无需 Node / Python / Git）
+
+若你拿到的是 **`AI Dropzone Setup x.x.x.exe`** 安装包（NSIS），按下面步骤即可使用完整功能：
+
+1. 双击安装程序，按向导完成安装（可改安装目录、可创建桌面快捷方式）。
+2. 从桌面或开始菜单启动 **AI Dropzone**（无需再开 CMD 或 uvicorn）。
+3. 首次启动会自动：
+   - 在后台启动内置后端（`127.0.0.1:17823`，无黑窗）；
+   - 在 `%APPDATA%\AI Dropzone\config.json` 创建配置（从模板复制）；
+   - 默认工作区为 `文档\AI Dropzone Workspace`。
+4. 打开 **设置**，填写 **DeepSeek API Key**（不会打进安装包）。
+5. 拖入文件 → 解析/改名 → 搜索与打包 → 撤销，与开发联调时一致。
+
+**卸载**：使用「添加或删除程序」中的 AI Dropzone 卸载项。用户配置与 workspace 在 `%APPDATA%\AI Dropzone` 与 `文档\AI Dropzone Workspace`，卸载程序默认不删除，需手动清理。
+
+**SmartScreen**：未签名的安装包可能提示「未知发布者」，答辩/内测可点「仍要运行」。
+
+---
+
+## 0.1 开发者构建安装包
+
+在**已配置 Python venv + Node** 的开发机上，于仓库根目录执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
+```
+
+该脚本依次：PyInstaller 打 `backend/dist/aidropzone-server/` → `vite build --mode full` → `build:electron` → `electron-builder`（NSIS）。
+
+产物：`frontend\release\AI Dropzone Setup 0.1.0.exe`（版本号以 `frontend/package.json` 为准）。
+
+**注意**：
+
+- 构建前勿把真实 API Key 写入 `backend/config.json`（该文件已在 `.gitignore`；仓库仅保留 `backend/config.example.json`）。
+- 旧命令 `npm run dist` 仍可用，但**不会**自动打 Python 后端；完整安装包请用 `build-release.ps1`。
+
+---
+
 ## 1. 项目是做什么的
 
 Windows **桌面悬浮窗**：拖入文件 → AI/Mock 解析与标签 → 预览并确认改名 → 按标签查看 → 导出 zip → 可撤销。
@@ -68,7 +106,8 @@ HCI_Course_Design-AIDropzone/
 ├── requirements.txt         ← Python 依赖（根目录）
 ├── backend/
 │   ├── main.py              ← HTTP 入口（uvicorn 启动）
-│   ├── config.json          ← 后端运行时配置（workspace、命名模板等）
+│   ├── config.example.json  ← 配置模板（提交 Git）
+│   ├── config.json          ← 本地运行时配置（不提交 Git，从 example 复制）
 │   ├── API_CONTRACT.md      ← 接口契约（前后端对齐看这个）
 │   ├── ARCHITECTURE.md      ← 后端架构说明
 │   ├── workspace/           ← 导出扫描目录（需自行准备测试文件，可无则导出为空）
@@ -111,12 +150,21 @@ pip install -r requirements.txt
 
 ### 4.2 后端 `backend/config.json`
 
+首次开发请复制模板：
+
+```cmd
+copy backend\config.example.json backend\config.json
+```
+
 | 字段 | 含义 |
 |------|------|
-| `workspace_root` | 导出时扫描的文件夹，默认 `./workspace`（相对 `backend/`） |
-| `ai_parser` | 当前为 `"mock"`（规则引擎，不调真 LLM） |
-| `naming.default_pattern` | 默认改名模板 `{tag}_{date}_{name}.{ext}` |
+| `workspace_root` | 导出/整理工作区；空则默认 `~/Documents/AIDropzone_Workspace`（安装包用户为 `~/Documents/AI Dropzone Workspace`） |
+| `ai_parser` | `"mock"` 或 `"llm"` |
+| `ai_parser_options.llm.api_key` | DeepSeek Key（设置页可写；勿提交 Git） |
+| `naming.default_pattern` | 默认改名模板 |
 | `rollback.journal_path` | 回滚日志文件名 `rollback_log.json` |
+
+安装包用户：配置在 `%APPDATA%\AI Dropzone\config.json`，由应用首次启动自动创建。
 
 **导出功能**：把已按标签规则改好名的测试文件放进 `backend/workspace/`，导出时才会被打进 zip。
 
@@ -319,17 +367,17 @@ npm run electron:dev:panel
 
 ---
 
-## 10. 打包 exe（答辩交付）
+## 10. 打包（开发者）
 
-```cmd
-cd /d D:\HCI_teamwork\HCI_Course_Design-AIDropzone\frontend
-npm run dist
-```
+| 目标 | 命令 | 产物 |
+|------|------|------|
+| **完整 NSIS 安装包**（含 Python 后端） | 根目录 `scripts\build-release.ps1` | `frontend\release\AI Dropzone Setup x.x.x.exe` |
+| 仅 Electron 壳（不含后端） | `cd frontend && npm run dist` | 需用户自行启 uvicorn |
 
-产物：`frontend\release\AI Dropzone 0.1.0.exe`（版本号以 package.json 为准）。
+完整安装包构建前请确认 `backend/dist/aidropzone-server/` 已由 PyInstaller 生成（`build-release.ps1` 会自动执行）。
 
-- 打包前若希望 exe 连真后端：先按完整功能配好 `.env.local` 或改 `.env.full` 再打包（`VITE_*` 会写入构建）。  
-- 仅 Mock 答辩：保持 Mock 配置即可，运行时无需 uvicorn。
+- 安装包内后端固定端口 **17823**；开发联调仍用 **8000**（或 `.env.full` 中配置的端口）。
+- 打包使用 `vite build --mode full`（`VITE_USE_MOCK=false`），与 `electron:dev:full` 一致。
 
 ---
 
@@ -386,7 +434,7 @@ npm run dist
 |------|------|
 | [API_CONTRACT.md](./backend/API_CONTRACT.md) | 四个 POST 接口的请求/响应 JSON |
 | [ARCHITECTURE.md](./backend/ARCHITECTURE.md) | 回滚、Pydantic、敏感词、模块划分 |
-| [config.json](./backend/config.json) | 运行时路径与命名配置 |
+| [config.example.json](./backend/config.example.json) | 配置模板 |
 | [main.py](./backend/main.py) | FastAPI 路由与启动说明 |
 
 ### 前端 `frontend/`

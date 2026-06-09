@@ -25,7 +25,8 @@
     "lucide-react": "^1.16.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-dropzone": "^15.0.0"
+    "react-dropzone": "^15.0.0",
+    "tree-kill": "^1.2.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
@@ -60,15 +61,28 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ]
     },
-    "portable": {
-      "artifactName": "AI Dropzone ${version}.exe"
-    }
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "AI Dropzone",
+      "deleteAppDataOnUninstall": true
+    },
+    "extraResources": [
+      {
+        "from": "../backend/dist/aidropzone-server/",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }
