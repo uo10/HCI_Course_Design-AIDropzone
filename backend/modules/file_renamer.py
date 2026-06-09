@@ -69,10 +69,10 @@ def rename_files(request: RenameRequest) -> RenameResult:
             )
 
         for plan in plans:
-            item: RenameItem = plan["item"]
+            ri: RenameItem = plan["item"]
             src = plan["source"]
             dst = plan["target"]
-            tags = list(item.tags_applied)
+            tags = list(ri.tags_applied)
 
             if plan.get("skip_reason"):
                 skipped.append({"path": str(src), "reason": plan["skip_reason"]})
