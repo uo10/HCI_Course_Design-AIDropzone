@@ -6,6 +6,7 @@ env/
 Thumbs.db
 desktop.ini
 rollback_log.json
+workspace/
 CLAUDE.md
 .claude*
 test_run.py
